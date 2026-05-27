@@ -1,0 +1,157 @@
+# Anaplan LLM Wiki
+
+A **Claude Code-powered knowledge vault** for Anaplan model builders. Drop in Anapedia docs, articles, and model CSV exports; Claude ingests them into a structured, interlinked Obsidian-style wiki that becomes durable context for future model-building work (formulas, debugging, design reviews, deltas across re-uploads).
+
+The wiki is the agent's **external memory** — not the product. The point is that every subsequent question Claude answers ("write me a formula for X", "what changed in this re-upload", "is this Polaris-safe?") is grounded in your actual model context, accumulated over time.
+
+---
+
+## What you get
+
+- **Claude Code as an Anaplan model-builder agent** with a project-specific system prompt (`CLAUDE.md`) that defines a vault schema, ingest/query/lint workflows, and Anaplan-aware conventions (DISCO, PLANS, engine-aware reasoning).
+- **A vault layout** that separates immutable sources (`raw/`) from generated, queryable wiki pages (`wiki/`).
+- **A project skill** (`anaplan-formula-agent`) that auto-activates when you ask for formula help and follows a Step-0 context-loading + Classic-vs-Polaris reasoning protocol.
+- **Obsidian compatibility** — open the vault in Obsidian to browse `[[wiki links]]` visually while Claude maintains it.
+
+---
+
+## Prerequisites
+
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) installed (CLI or IDE extension).
+- A local folder you'll use as the vault root (this becomes Claude Code's working directory).
+- [Obsidian](https://obsidian.md/) pointed at the same folder for browsing the wiki.
+
+No databases, no servers, no API keys beyond what Claude Code itself needs. Everything is flat markdown + CSVs on disk.
+
+---
+
+## Setup
+
+### 1. Create the vault
+
+```
+<vault-root>/
+├── CLAUDE.md                   # project system prompt (see step 2)
+├── README.md                   # this file
+├── index.md                    # master index (Claude maintains)
+├── log.md                      # append-only operation log (Claude maintains)
+├── raw/
+│   ├── docs/                   # Anapedia clippings, PDFs, articles
+│   ├── models/<Model Name>/    # CSV exports per model
+│   ├── logs/<Model Name>/      # error/diagnostic logs from imports/actions
+│   └── assets/                 # images referenced from sources
+├── wiki/
+│   ├── concepts/               # Anaplan concepts (line items, dimensions, …)
+│   ├── functions/              # categorized function index + category pages
+│   ├── models/<Model Name>/    # per-model dossiers (mirrors raw/models/)
+│   ├── patterns/               # DISCO, PLANS, Planual, Anaplan Way, naming, …
+│   └── sources/                # one summary page per ingested source
+└── .claude/
+    ├── settings.local.json
+    └── skills/
+        └── anaplan-formula-agent/
+            ├── SKILL.md
+            └── references/
+                └── classic-vs-polaris.md
+```
+
+Only `CLAUDE.md`, the `.claude/skills/anaplan-formula-agent/` folder, and the empty top-level directories are needed to start — Claude will create the wiki pages, `index.md`, and `log.md` as you ingest content.
+
+### 2. Drop in `CLAUDE.md`
+
+Copy the `CLAUDE.md` from this repo into your vault root. It defines:
+
+- The vault layout and naming conventions
+- The **Ingest / Query / Lint** workflows
+- The **incremental re-upload diff protocol** for model CSVs (so re-exports apply as deltas instead of overwriting)
+- Anaplan-specific guidance (DISCO categorization, function naming, engine defaults)
+- Which models default to which engine (e.g. "FSP 2.0 and AAC are Polaris")
+
+Edit the engine-default block and any team-specific naming conventions to fit your context.
+
+### 3. Install the project skill
+
+Copy `.claude/skills/anaplan-formula-agent/` into your vault. The skill auto-activates when:
+
+- You ask Claude to write, fix, refactor, or explain an Anaplan formula
+- You mention a specific module / line item / list by name
+- You ask about Classic vs Polaris engine differences
+- Model CSVs have been ingested
+
+It includes a Step-0 protocol (load model context before reasoning), a Planual checklist, and `references/classic-vs-polaris.md` for engine-sensitive functions.
+
+### 4. Start Claude Code in the vault root
+
+```powershell
+cd <vault-root>
+claude
+```
+
+Claude will read `CLAUDE.md` automatically.
+
+---
+
+## Daily workflow
+
+### Ingest a new source
+
+Drop a file into the right `raw/` subfolder, then tell Claude:
+
+> "Ingest `raw/docs/<new-clipping>.md`."
+
+Claude will summarize the source, confirm the angle of emphasis, create a `wiki/sources/YYYY-MM-DD-<slug>.md` summary page, touch every relevant concept/function/pattern page, update `index.md`, and append to `log.md`.
+
+### Re-upload a model CSV
+
+Drop the new CSV into `raw/models/<Model>/` (Claude will date-suffix the old file so prior versions stay diff-able), then:
+
+> "Ingest the new `<Model>` CSVs as a delta."
+
+Claude diffs against the previous version, applies only added/removed/renamed/modified items to the wiki, preserves your annotations, and writes a new dated source page summarizing **what changed**.
+
+### Ask model-building questions
+
+> "Write a formula on `CA 04. UMDT on AAC Ragged` that …"
+> "Why is `IM 01.Cumulative Factor L3 Upstream` returning blank?"
+> "What changed in FSP 2.0 between 2026-05-22 and 2026-05-27?"
+
+Claude reads the master `index.md`, descends into sub-indexes, follows `[[wiki links]]`, and answers with citations to wiki pages and raw sources.
+
+### Health-check the vault
+
+> "Run a vault health check" (or "lint the vault")
+
+Claude scans for broken `[[wiki links]]`, orphan pages, index drift, stale paths, frontmatter issues, and missing cross-references, and reports a prioritized list of fixes.
+
+---
+
+## Customizing for your team
+
+- **Different engine defaults?** Edit the *Engine defaults* line near the end of `CLAUDE.md`.
+- **Different naming convention?** Replace `wiki/patterns/naming-convention-stedin.md` (or ingest your own naming doc into `raw/docs/`).
+- **More models?** Just create `raw/models/<NewModel>/` and `wiki/models/<NewModel>/`. The per-model-subfolder convention means filenames can repeat across models — the directory name disambiguates.
+- **More skills?** Add `.claude/skills/<skill-name>/SKILL.md`. Frontmatter `description:` controls when it auto-activates.
+
+---
+
+## Tips
+
+- **Confirm angle before big ingests.** A two-line "I'll emphasize X, Y, Z — OK?" exchange beats redoing 20 wiki pages.
+- **Never edit `raw/`.** It's the source of truth and the diff baseline. Edit `wiki/` instead.
+- **Keep page scope tight** — one concept, one function, one module per page. Split at ~400 lines.
+- **Update sub-indexes, not the root.** The root `index.md` only changes when a new top-level section appears.
+- **Use the log.** `log.md` is the chronological audit trail; Claude appends to it on every ingest. `grep '^## \[' log.md` for a quick history.
+
+---
+
+## Repo layout in this reference vault
+
+What's checked in here as a working example:
+
+- `CLAUDE.md` — the system prompt
+- `.claude/skills/anaplan-formula-agent/` — the formula-writing skill
+- `index.md`, `log.md` — populated for the Stedin FSP 2.0 + AAC models
+- `wiki/` — ~200 generated pages: 22 concept pages, 145 functions across 10 categories, 5 standalone patterns + Planual (8 chapters) + Anaplan Way (7 pages), 2 model dossiers (FSP 2.0, AAC — both Polaris), 18 source pages
+- `raw/` — sample ingested sources (Anapedia clippings, model CSV exports, methodology docs)
+
+You can use the FSP 2.0 / AAC pages as worked examples of model-dossier structure, or wipe `wiki/` and `raw/` and start fresh against your own models.
