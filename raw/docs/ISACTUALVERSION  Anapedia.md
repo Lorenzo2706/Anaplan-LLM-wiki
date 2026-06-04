@@ -1,0 +1,35 @@
+---
+title: "ISACTUALVERSION | Anapedia"
+source: "https://help.anaplan.com/isactualversion-138ee6b0-34a3-4654-b944-f655e6b28ad8"
+author:
+published:
+created: 2026-05-02
+description: "The ISACTUALVERSION function returns a TRUE result for the version that is set as Actual in a model. It returns FALSE for all other versions."
+tags:
+  - "clippings"
+---
+[All functions](https://help.anaplan.com/all-functions-160769b0-de37-4f08-87a0-cc3aa55525a3 "All functions")
+
+The ISACTUALVERSION function returns a TRUE result for the version that is set as **Actual** in a model. It returns FALSE for all other versions.
+
+For example, you can use the ISACTUALVERSION function to ensure that a formula only applies to the Actual version.
+
+`ISACTUALVERSION()`
+
+The ISACTUALVERSION function does not use any arguments.
+
+This function returns a Boolean result.
+
+`ISACTUALVERSION()`
+
+In this example, the formula returns a TRUE result for the version that is set as **Actual**.
+
+|  | **Actual** | **Budget** | **Forecast** |
+| --- | --- | --- | --- |
+| Actual version  `ISACTUALVERSION()` |  |  |  |
+
+`IF ISACTUALVERSION() THEN Sales.Year End Reports ELSE 0`
+
+In this example, the formula tests if a version is the Actual version. If it is, it returns the value of *Sales.Year End Reports*. If it is not, it returns 0.
+
+<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.23.1/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fisactualversion-138ee6b0-34a3-4654-b944-f655e6b28ad8&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>
