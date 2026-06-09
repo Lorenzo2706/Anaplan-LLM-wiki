@@ -160,7 +160,7 @@ Apply these automatically. Reference: [Planual](https://planual.com) and
    `IF ISNOTBLANK(text) THEN FINDITEM(List, text) ELSE BLANK`
 
 6. **No POST for time offsets.** Use `OFFSET`, `LAG`, or `MOVINGSUM`.
-   (POST is unavailable in Polaris entirely.)
+   (POST is available in Polaris but cannot be used on Formula summary line items; prefer OFFSET.)
 
 7. **Flag single-threaded functions.** `RANK`, `RANKCUMULATE`, and
    `ISFIRSTOCCURRENCE` are single-threaded — warn the user if the target list
@@ -215,7 +215,7 @@ performance risks observed in the existing formula.
 - FINDITEM on blank values without ISNOTBLANK guard
 - Line item name with special characters not quoted
 - POST used in a Polaris model
-- COLLECT used in a Classic model (Polaris-only)
+- TEXTLIST or FIRSTNONBLANK aggregation methods used inside MOVINGSUM in a Polaris model (unavailable)
 - TIMESUM applied to a time-dimensioned line item
 
 ### Optimizing / refactoring a formula
@@ -291,3 +291,11 @@ headers. Columns may vary slightly — match by closest name.
   - A formula uses: POST, COLLECT, CUMULATE, LOOKUP, FINDITEM, SELECT, RANK,
     OFFSET, LAG, or any time function
   - The user asks about engine differences
+
+- **`references/polaris-function-compatibility.md`** — **Authoritative Polaris function
+  compatibility table** built from all Anapedia source docs. Contains every function's
+  Polaris status (available / unavailable / Polaris-only / caveats), grouped
+  unavailability lists, and critical pitfall sections. **Read this file FIRST for any
+  Polaris formula work — it supersedes `classic-vs-polaris.md` on function availability.**
+  Also contains corrections to errors in `classic-vs-polaris.md` (POST, PREVIOUS, NEXT,
+  COLLECT, CUMULATE were all incorrectly described there).
