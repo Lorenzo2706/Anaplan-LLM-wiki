@@ -22,9 +22,16 @@ wiki/
   models/<Model>/       Per-model wiki pages, mirrors raw/models/
   patterns/             Best practices, design patterns (PLANS, DISCO, …)
   sources/              One summary page per ingested source
+analyses/               Standalone deep-dive artifacts (HTML), e.g. circular-reference
+                        analyses and eval reviews — not catalogued in index.md
+Clippings/              Obsidian Web Clipper landing folder for new raw docs
 index.md                Catalog of all wiki pages (main index)
 log.md                  Append-only chronological log of operations
 ```
+
+**Version control:** `.gitignore` excludes `wiki/`, `index.md`, `log.md`, `analyses/`, and all of `raw/` **except `raw/docs/`**. The generated wiki is therefore **local-only external memory** — only `raw/docs/`, `CLAUDE.md`, and `.claude/skills/` are committed. Don't assume wiki pages are recoverable from git history; treat the on-disk files as the source of truth.
+
+**Sub-index architecture:** `index.md` at the vault root is a lean master index — every subfolder (`wiki/concepts/`, `wiki/functions/`, `wiki/models/<Model>/`, `wiki/patterns/`, `wiki/sources/`) owns its own `index.md` with the detail. On ingest, update the relevant **sub-index** and touch the master `index.md` only when a new top-level section or sub-index appears.
 
 1. **`raw/`** — immutable source documents. Never edit these. Read-only.
    - `raw/docs/` — Anaplan documentation, articles, PDFs, web clippings
@@ -136,6 +143,7 @@ When asked to health-check:
 Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) when the trigger conditions in the skill's frontmatter match — do not just read the file.
 
 - **`anaplan-formula-agent`** (`.claude/skills/anaplan-formula-agent/SKILL.md`) — write, explain, debug, or optimize Anaplan formulas using full model context. Trigger whenever the user asks to write/fix/refactor a formula, mentions a specific module/line item/list, asks about Classic vs Polaris engine differences, or has uploaded model CSVs. Includes a Step-0 context-loading protocol, engine-determination gate, Planual checklist, and `references/classic-vs-polaris.md` for engine-specific function behavior. Prefer this skill over generic formula reasoning whenever model context is available.
+- **`anaplan-module-mapping`** (`.claude/skills/anaplan-module-mapping/SKILL.md`) — the **dual-explanation standard** for wiring line items across modules. Trigger whenever connecting/feeding one module into another, writing cross-module formulas (`SUM:`, `LOOKUP:`, `SELECT:`, dot-notation references), explaining data flow, or justifying why a formula is written a certain way. Always delivers two separate explanations per formula: (1) financial/functional logic and (2) Anaplan technical mechanics. Includes a dimension-alignment checklist, sign-convention reference, and common CA→FS mapping scenarios. Composes with `anaplan-formula-agent` — use both when the formula is both cross-module and engine-sensitive.
 
 ## Anaplan-specific guidance
 
@@ -143,4 +151,4 @@ Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) whe
 - When a formula appears in a source, link every function in it to its `wiki/functions/` page.
 - When a module appears, identify its DISCO category (Data, Inputs, System, Calculations, Outputs) if inferable.
 - Track formula syntax exactly as Anaplan writes it (case-sensitive function names, square brackets for selectors).
-- **Engine defaults:** `FSP 2.0` and `AAC` are both **Polaris** models. When working in either, apply Polaris semantics by default (sparsity, LOOKUP, aggregation behavior) and consult `.claude/skills/anaplan-formula-agent/references/classic-vs-polaris.md` before reasoning about engine-sensitive functions. Do not assume Classic.
+- **Engine defaults:** `FSP 2.0` and `AAC` are **Polaris** models; `MJP` is a **Classic** model (Stedin's Meerjarenplan — multi-year OPEX/CAPEX/FTE/KPI planning, ~440 modules). These are the three models currently ingested. Apply the correct engine's semantics by default (sparsity, LOOKUP, aggregation behavior differ between the two) and consult `.claude/skills/anaplan-formula-agent/references/` (both files) before reasoning about engine-sensitive functions. Do not assume neither Classic nor Polaris. Reference to `\.claude\skills\anaplan-formula-agent\SKILL.md` anytime a model engine is not specified. 

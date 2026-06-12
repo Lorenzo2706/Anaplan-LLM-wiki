@@ -26,7 +26,11 @@ context provided as CSV files, Planual best practices, and engine-aware syntax
 Before writing any formula, execute this protocol exactly once per session (or
 when new CSVs are uploaded):
 
-1. **Scan the uploads folder** (`/mnt/user-data/uploads/`) for any of these
+1. **Analyze the requisite**: user can be more or less detailed when formulating a request.
+   If the request is detailed enough, you can skip point 2. and read directly the CSV files; if 
+   not specific enough read the summarized wiki data to get a quick overview of the model (see point 2)
+
+2. **Scan the model wiki folder** (`.\Anaplan LLM wiki\wiki\models`) for any of these
    files (names are case-insensitive; partial matches count):
 
    | File pattern | Purpose |
@@ -37,17 +41,17 @@ when new CSVs are uploaded):
    | `*calendar*` or `*time*` | Model calendar & time ranges |
    | `*action*` | Actions registry |
 
-2. **Read each CSV** that is found. Extract only what is needed to answer the
+3. **Read each CSV** that is found. Extract only what is needed to answer the
    current request — do not dump raw CSV content to the user.
 
-3. **Build an internal model map** (keep in working memory):
+4. **Build an internal model map** (keep in working memory):
    - Module names → their dimensions (Applies To lists) and time scale
    - Line item names → their module, format, summary method, formula (if any)
    - List names → their hierarchy (parent list, top-level item)
    - Time scale → fiscal year start, current period, available timescales
    - Actions → name and type
 
-4. **If no CSVs are found**, proceed without context but note to the user that
+5. **If no CSVs are found**, proceed without context but note to the user that
    results will be less precise and ask them to paste the relevant module/line
    item structure inline.
 
@@ -57,6 +61,7 @@ when new CSVs are uploaded):
 
 **Always determine the calculation engine before writing a formula.**
 
+- If the wiki or the index specify the engine, use that as source of thruth and act accordingly. 
 - If the user has stated the engine (Classic or Polaris) in their message →
   use it.
 - If it can be inferred from the CSV context (e.g. a "Model Settings" or
@@ -85,7 +90,7 @@ Before writing, resolve these in order using the loaded model map:
 4. **Aggregation direction** — Apply the SUM vs LOOKUP rule (see below).
 5. **Time scale** — Does the formula need to cross time scales? If yes, flag
    TIMESUM / MOVINGSUM / YEARTODATE implications.
-6. **Engine-specific constraints** — Check `references/classic-vs-polaris.md`
+6. **Engine-specific constraints** — Check `references/polaris-function-compatibility.md` & `references/classic-vs-polaris.md`
    for any function that behaves differently or is unavailable in the active
    engine.
 
@@ -122,6 +127,7 @@ number of questions before proceeding. Never guess formats or dimensions.
   `FIRST_NON_BLANK`, `LAST_NON_BLANK`, `TEXTLIST`) require a mapping argument
 - `LOOKUP` mapping must share at least one dimension with the target or result
   line item — if not, a level mismatch error will occur
+- If a naming convention is specified in the wiki, use that naming convention when suggest new formula or modules. 
 
 ---
 
@@ -139,8 +145,8 @@ dimension?"* Target → LOOKUP. Source → SUM.
 
 ## Planual Best Practices
 
-Apply these automatically. Reference: [Planual](https://planual.com) and
-[Anapedia](https://help.anaplan.com).
+Apply these automatically. Reference: [Planual](`.\Anaplan LLM wiki\wiki\patterns\planual`) and
+[Anapedia](https://help.anaplan.com, if you cannot find relevant information in the wiki).
 
 1. **Break complex formulas into intermediate line items.** If a formula
    cannot be described in one sentence, split it. Never nest more logic than
