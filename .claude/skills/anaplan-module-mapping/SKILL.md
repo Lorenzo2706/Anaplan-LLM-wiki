@@ -34,8 +34,8 @@ Answer: *What does this number represent, and why should it flow from this sourc
 - If the sign is flipped, explain the accounting convention that requires it (costs are 
   positive in a calculation module but negative on a P&L; cash outflows are negative in 
   cashflow statements, etc.).
-- If the user's model uses a language the user may not be fluent in (e.g., Dutch module/LI 
-  names), translate the relevant terms in plain English as part of this section.
+- If the user's model uses module/LI names in a language other than the user's working 
+  language, translate the relevant terms in plain English as part of this section.
 
 ### 2. Anaplan Technical Mechanics
 
@@ -44,16 +44,16 @@ Answer: *How does the formula actually work step by step?*
 - Identify the dimension mismatch between source and target, and explain what aggregation 
   or lookup resolves it (SUM vs LOOKUP, and why for this specific case).
 - Name the mapping line item(s) used and which module they live in — explain what each 
-  one contains (e.g., "IM 13.L3 Entiteit maps each L5 Afdeling to its parent L3 entity").
+  one contains (e.g., "IM XX.Parent Entity maps each child list member to its parent").
 - If Polaris auto-sums residual source dimensions not covered by the explicit SUM: selector, 
   call this out explicitly rather than leaving it implicit.
 - Note any sign transformation in formula terms (negation, multiplication by -1, etc.) and 
   distinguish it from the financial reason for the sign (explained in part 1).
 - Flag dependencies: mapping LIs that must exist before the formula can be entered, helper 
   line items that need to be pre-built in the source module, etc.
-- If the formula uses a helper line item in the source module (e.g., a pre-filtered variant 
-  like "Netto rentelasten ex hybride"), briefly state what that helper does rather than 
-  treating it as a black box.
+- If the formula uses a helper line item in the source module (e.g., a pre-filtered or 
+  pre-aggregated variant), briefly state what that helper does rather than treating it as 
+  a black box.
 
 ## Output Structure
 
@@ -80,14 +80,14 @@ is identical.
 
 Before writing, resolve these in order:
 
-1. **What dimensions does the target module have?** (e.g., FSP versies × L3 Entiteit × Year)
+1. **What dimensions does the target module have?** (e.g., Version × Entity × Time)
 2. **What extra dimensions does the source module have that the target does not?** These must 
    be explicitly aggregated (SUM:) or the remaining ones will be auto-summed by Polaris.
 3. **Are any target dimensions absent from the source?** These need a LOOKUP.
 4. **Is the target at a parent level of the source's list?** Use SUM: with a mapping that 
    routes each child item to its parent.
 5. **Is the target at a child level of the source's list?** Use LOOKUP to spread the parent 
-   value to each child (or use a designated "one L5 per L3" mapping module).
+   value to each child (or use a designated mapping module that selects one child per parent).
 6. **What summary method do source line items use?** If Sum summaries are set on a list 
    dimension, note that Polaris leverages these in cross-module aggregation.
 
@@ -97,29 +97,41 @@ Keep these consistent across the model:
 
 | Context | Convention |
 |---|---|
-| Calculation modules (CA) | Costs are **positive**; revenues are **positive** (treat separately) |
-| P&L (FS 01) | Costs are **negative** (reduce profit); revenues are **positive** |
-| Cashflow (FS 03) | Outflows are **negative**; inflows are **positive** |
-| Rollforward / Verloopstaat (FS 04) | Items that reduce a balance are **negative**; additions are **positive** |
+| Calculation modules | Costs are **positive**; revenues are **positive** (treat separately) |
+| P&L / Income Statement | Costs are **negative** (reduce profit); revenues are **positive** |
+| Cashflow Statement | Outflows are **negative**; inflows are **positive** |
+| Rollforward / Balance movement | Items that reduce a balance are **negative**; additions are **positive** |
 
 Always state which convention applies when explaining a negation.
 
 ## Common Mapping Scenarios
 
-### CA (calculation) → FS 01 P&L (L5 Afdeling)
-Source is typically at L3 Entiteit or a list not present in FS 01. Use `[SUM: IM 11.'Mapping X']` 
-where IM 11 routes each L3 entity to one designated L5 Afdeling. If source has a subset of 
-L5 already, SUM: the instrument/item dimension only — L5 aligns automatically.
+### Calculation module → P&L / Income Statement
+Source calculation module holds costs as positive values; the P&L requires costs as negative 
+(reducing profit). SUM: up any extra source dimensions (e.g., cost category, instrument type) 
+that the P&L does not have. Apply `* -1` where the sign convention requires it, and explain 
+the accounting reason in the financial logic section.
 
-### CA (calculation) → FS 03 Cashflow (L3 Entiteit)
-Source often has an extra instrument or item dimension (e.g., Debt Items L2) plus L5 Afdeling 
-subset. Use `[SUM: 'IM 13. L5 Afdeling'.'L3 Entiteit']` to aggregate L5 → L3; Polaris 
-auto-sums the remaining extra dimension (e.g., L2).
+### Calculation module → Cashflow Statement
+Same aggregation pattern as P&L. Cash outflows must be negative. If the source has multiple 
+extra dimensions, the explicit SUM: selector handles one; Polaris auto-sums any remaining 
+dimensions not covered by it — call this out explicitly so the reader knows what is implicit.
 
-### CA (calculation) → FS 04 Verloopstaat (L3 Entiteit)
-Same pattern as FS 03. Distinguish between movement line items (additions/reductions that 
-feed the rollforward formula) and position line items (closing balances). Only movements 
-should be wired from CA; closing balances are computed within FS 04 from the movements.
+### Calculation module → Rollforward / Balance movement module
+Distinguish movement line items (additions, reductions that feed the rollforward formula) 
+from position line items (opening/closing balances). Only wire movements from the calculation 
+module; closing balances are computed within the rollforward module from those movements.
+
+### Detail list → Summary list (aggregation)
+Source is dimensioned by a child list; target is dimensioned by the parent list. Use 
+`SUM: <MappingModule>.'<Parent LI>'` where the mapping module is dimensioned by the **source** 
+(child) list and holds a reference to each item's parent. Polaris will auto-sum any additional 
+source dimensions not explicitly handled by the SUM: selector.
+
+### Summary list → Detail list (distribution)
+Target is more granular than the source. Use `LOOKUP: <MappingModule>.'<Source LI>'` where 
+the mapping module is dimensioned by the **target** list and points each member to its source 
+counterpart. Use this when spreading a parent-level value to child members.
 
 ### SUM vs LOOKUP decision rule
 - **SUM:** Source list maps → Target list item (source is more granular than target, or has 

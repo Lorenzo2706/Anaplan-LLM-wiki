@@ -6,7 +6,7 @@ The wiki described below is your **external memory system** — not the goal in 
 
 ## Layers
 
-Vault root: `C:\Users\LorenzoGiori\Desktop\Anaplan LLM wiki\` (this working directory).
+Vault root: `<your-vault-root>` (this working directory — the folder where you cloned or copied this repo).
 
 **Actual layout on disk:**
 
@@ -35,13 +35,13 @@ log.md                  Append-only chronological log of operations
 
 1. **`raw/`** — immutable source documents. Never edit these. Read-only.
    - `raw/docs/` — Anaplan documentation, articles, PDFs, web clippings
-   - `raw/models/<Model Name>/` — CSV exports of model specifics (modules, line items, lists, dimensions). Each model gets its own subfolder (e.g. `FSP 2.0/`, `AAC/`); CSV filenames are identical across models, so the **directory name is the only disambiguator** — always carry the model name when reading or citing these files.
+   - `raw/models/<Model Name>/` — CSV exports of model specifics (modules, line items, lists, dimensions). Each model gets its own subfolder (e.g. `ModelA/`, `ModelB/`); CSV filenames are identical across models, so the **directory name is the only disambiguator** — always carry the model name when reading or citing these files.
    - `raw/logs/<Model Name>/` — error/diagnostic logs from imports, actions, processes, and other model activities. Same per-model subfolder convention as `models/`. Use these as ground truth when debugging an action or import failure; the user drops them here when they want help diagnosing an issue.
    - `raw/assets/` — images referenced from sources
 2. **`wiki/`** — LLM-generated, interlinked markdown. You own this entirely.
    - `wiki/concepts/` — foundational Anaplan concepts (dimensions, line items, lists, hierarchies, time, versions, subsets, line item subsets, formulas)
    - `wiki/functions/` — categorized index + category overview pages; individual function deep-dives created on-demand. Category pages (Aggregation, Time/Date, Numeric, Text, Logical, Mapping, Financial, Trigonometry, Call-center, Misc) live directly under `wiki/functions/` and are created lazily on first ingest that needs them.
-   - `wiki/models/<Model Name>/` — one subfolder per model (e.g. `FSP 2.0/`, `AAC/`). Mirror the `raw/models/` layout. Page filenames may repeat across models; the parent folder is the disambiguator.
+   - `wiki/models/<Model Name>/` — one subfolder per model (e.g. `ModelA/`, `ModelB/`). Mirror the `raw/models/` layout. Page filenames may repeat across models; the parent folder is the disambiguator.
    - `wiki/patterns/` — best practices, design patterns (PLANS, DISCO, calculation modules vs input vs output, etc.)
    - `wiki/sources/` — one summary page per ingested source
 3. **`index.md`** (vault root) — catalog of all wiki pages (you maintain on every ingest)
@@ -136,7 +136,7 @@ When asked to health-check:
 - **Update `index.md` and `log.md` on every ingest** — these are the navigation backbone.
 - **Prefer updating an existing page over creating a near-duplicate.** Search the wiki first.
 - **Use Obsidian-friendly syntax** — `[[wiki links]]`, frontmatter, callouts (`> [!note]`).
-- For CSVs of model specifics: extract structure (modules, line items, dimensions, formulas) into structured wiki pages under `wiki/models/<model-name>/`. Keep the raw CSV as the source of truth.
+- For CSVs of model specifics: extract structure (modules, line items, dimensions, formulas) into structured wiki pages under `wiki/models/<model-name>/`. Use the wiki for reference and keep the raw CSV as the source of truth.
 
 ## Skills
 
@@ -151,4 +151,4 @@ Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) whe
 - When a formula appears in a source, link every function in it to its `wiki/functions/` page.
 - When a module appears, identify its DISCO category (Data, Inputs, System, Calculations, Outputs) if inferable.
 - Track formula syntax exactly as Anaplan writes it (case-sensitive function names, square brackets for selectors).
-- **Engine defaults:** `FSP 2.0` and `AAC` are **Polaris** models; `MJP` is a **Classic** model (Stedin's Meerjarenplan — multi-year OPEX/CAPEX/FTE/KPI planning, ~440 modules). These are the three models currently ingested. Apply the correct engine's semantics by default (sparsity, LOOKUP, aggregation behavior differ between the two) and consult `.claude/skills/anaplan-formula-agent/references/` (both files) before reasoning about engine-sensitive functions. Do not assume neither Classic nor Polaris. Reference to `\.claude\skills\anaplan-formula-agent\SKILL.md` anytime a model engine is not specified. 
+- **Engine defaults:** List each of your models here with their engine — e.g. `` `ModelA` is **Polaris**; `ModelB` is **Classic** ``. Apply the correct engine's semantics by default (sparsity, LOOKUP, aggregation behavior differ between the two) and consult `.claude/skills/anaplan-formula-agent/references/` (both files) before reasoning about engine-sensitive functions. Do not assume Classic or Polaris — always resolve the engine from this list or ask the user. Reference `\.claude\skills\anaplan-formula-agent\SKILL.md` anytime a model engine is not specified.

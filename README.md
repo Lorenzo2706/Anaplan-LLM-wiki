@@ -61,13 +61,13 @@ Only `CLAUDE.md`, both `.claude/skills/` folders, and the empty top-level direct
 
 ### 2. Drop in `CLAUDE.md`
 
-Copy the `CLAUDE.md` from this repo into your vault root. It defines:
+Remove the .example extension from the `CLAUDE.md`and copy it from this repo into your vault root. It defines:
 
 - The vault layout and naming conventions
 - The **Ingest / Query / Lint** workflows
 - The **incremental re-upload diff protocol** for model CSVs (so re-exports apply as deltas instead of overwriting)
 - Anaplan-specific guidance (DISCO categorization, function naming, engine defaults)
-- Which models default to which engine (e.g. "FSP 2.0 and AAC are Polaris; MJP is Classic")
+- Which models default to which engine (fill in your own model names and engine assignments)
 
 Edit the engine-default block and any team-specific naming conventions to fit your context.
 
@@ -110,9 +110,9 @@ Claude diffs against the previous version, applies only added/removed/renamed/mo
 
 ### Ask model-building questions
 
-> "Write a formula on `CA 04. UMDT on AAC Ragged` that …"
-> "Why is `IM 01.Cumulative Factor L3 Upstream` returning blank?"
-> "What changed in FSP 2.0 between 2026-05-22 and 2026-05-27?"
+> "Write a formula on `<Module Name>.<Line Item>` that …"
+> "Why is `<Module Name>.<Line Item>` returning blank?"
+> "What changed in `<Model Name>` between this upload and the last?"
 
 Claude reads the master `index.md`, descends into sub-indexes, follows `[[wiki links]]`, and answers with citations to wiki pages and raw sources.
 
@@ -127,7 +127,7 @@ Claude scans for broken `[[wiki links]]`, orphan pages, index drift, stale paths
 ## Customizing for your team
 
 - **Different engine defaults?** Edit the *Engine defaults* line near the end of `CLAUDE.md`.
-- **Different naming convention?** Replace `wiki/patterns/naming-convention-stedin.md` (or ingest your own naming doc into `raw/docs/`).
+- **Different naming convention?** Ingest your own naming doc into `raw/docs/` and Claude will create a `wiki/patterns/naming-convention-<yourteam>.md` page from it.
 - **More models?** Just create `raw/models/<NewModel>/` and `wiki/models/<NewModel>/`. The per-model-subfolder convention means filenames can repeat across models — the directory name disambiguates.
 - **More skills?** Add `.claude/skills/<skill-name>/SKILL.md`. Frontmatter `description:` controls when it auto-activates.
 
@@ -150,9 +150,8 @@ What's checked in here as a working example:
 - `CLAUDE.md` — the system prompt
 - `.claude/skills/anaplan-formula-agent/` — formula-writing skill
 - `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill
-- `index.md`, `log.md` — populated for the Stedin FSP 2.0, AAC, and MJP models
-- `wiki/` — ~230 generated pages: 22 concept pages + 15 D&I chapters · 145 functions across 10 categories · 5 standalone patterns + Planual (8 chapters) + Anaplan Way (7 pages) · 3 model dossiers (FSP 2.0 + AAC = Polaris, MJP = Classic) · 21 source pages
+- `CLAUDE.md.example` — copy this to `CLAUDE.md` and fill in your vault root path, model names, and engine assignments
+- `.claude/skills/anaplan-formula-agent/` — formula-writing skill
+- `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill
 - `raw/docs/` — sample ingested sources (Anapedia clippings, methodology docs)
-- `analyses/` — standalone deep-dive HTML artifacts (e.g. circular-reference analysis, eval reviews)
-
-You can use the FSP 2.0 / AAC pages as worked examples of model-dossier structure, or wipe `wiki/` and `raw/` and start fresh against your own models.
+- `wiki/`, `index.md`, `log.md`, and `analyses/` are local-only and not checked in — Claude generates them as you ingest content. Start by copying `CLAUDE.md.example` to `CLAUDE.md`, customizing it, and ingesting your first source.

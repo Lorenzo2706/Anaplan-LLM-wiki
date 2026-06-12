@@ -1,5 +1,6 @@
 /.env
 /.mcp.json
+/CLAUDE.md
 /.obsidian
 /raw/*
 !/raw/docs
