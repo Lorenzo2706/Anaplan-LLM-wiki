@@ -74,36 +74,15 @@ sources: [path/to/source1.md, ...]
 
 ### Ingest
 
-When the user drops a source into `raw/` and asks to ingest:
+Invoke the **`wiki-data-ingestion`** skill (Cowork plugin skill) for all ingest work — both general sources and model CSVs. The skill handles:
 
-1. Read the source. For CSVs, sample the structure and infer schema before reading all rows.
-2. Briefly summarize key takeaways in chat and confirm angle/emphasis with the user.
-3. Create `wiki/sources/YYYY-MM-DD-<slug>.md` — a summary page citing the raw path.
-4. Touch every relevant page across the wiki:
-   - Create new entity/concept/function pages if the source introduces them.
-   - Update existing pages with new facts, contradictions, or examples.
-   - Add cross-references both directions.
-1. Update sub indexes and/or create a new one if necessary. If you go for the second option, update [`index.md`](obsidian://open?vault=Anaplan%20LLM%20wiki&file=index) (add new pages, refresh counts).
-2. Append to `log.md` with the format:
-   `## [YYYY-MM-DD] ingest | <source title>` followed by a 2-3 line note on what was touched.
-
-### Ingest — incremental model CSV re-uploads
-
-The user re-exports model CSVs periodically. **Each new export is mostly the same as the previous one (~80% unchanged) with incremental additions/changes** — new modules, new line items, renamed items, changed formulas, new lists, etc. The filename may even be identical to a prior upload.
-
-When ingesting a model CSV:
-
-1. **Identify whether this is a re-upload** of an existing model. Check `wiki/models/` and `wiki/sources/` for prior ingests of the same model (by filename, model name, or content fingerprint). If unsure, ask the user.
-2. **If it is a re-upload**, do not overwrite or re-ingest from scratch. Instead:
-   - Diff the new CSV against the prior version (or against the existing wiki model pages, if the prior raw CSV is gone).
-   - Identify **added**, **removed**, **renamed**, and **modified** items (modules, line items, formulas, dimensions, lists).
-   - Apply only the deltas to the wiki: update changed pages, add new ones, mark removed items (don't silently delete — note removal with date in case it's a mistake).
-   - Preserve user-added notes, cross-references, and commentary on existing pages.
-3. **Source page**: create a *new* `wiki/sources/YYYY-MM-DD-<slug>.md` for each upload (do not overwrite the prior one) summarizing **what changed** since the previous version, not the whole model. Link back to the previous source page.
-4. **Raw file handling**: if the new file has the same name as an existing one in `raw/models/`, save it with a date suffix (`<name>__YYYY-MM-DD.csv`) so prior versions remain available for diffing. Never overwrite a raw file.
-5. Log the ingest in `log.md` as `## [YYYY-MM-DD] ingest-delta | <model name>` with a short delta summary (e.g., "+3 modules, +12 line items, 2 formula changes, 1 rename").
-
-If it is a **first-time** ingest of a model, follow the standard Ingest flow above and seed `wiki/models/<model-name>/` fully.
+- **Path acquisition** — asks for file paths if not provided; falls back to auto-discovery by comparing `raw/` against `wiki/sources/` if the user prefers.
+- **Grouping** — for multiple files, asks whether they are related and builds batches accordingly (can be mixed).
+- **Source classification** — auto-detects general doc vs model CSV; for CSVs, auto-detects first-time vs incremental delta by checking `wiki/sources/` and `wiki/models/`.
+- **General source ingest** — creates `wiki/sources/YYYY-MM-DD-<slug>.md`, touches relevant concept/function/pattern pages, updates sub-indexes, appends to `log.md`.
+- **Model CSV first-time ingest** — seeds `wiki/models/<Model Name>/` with structured module/line-item pages, creates a dated source page, updates indexes.
+- **Model CSV incremental delta** — diffs against prior version, applies only added/removed/renamed/modified items, saves new raw file with date suffix, creates a new delta source page, flags removals instead of silently deleting.
+- **Post-ingest summary** — always prints a structured summary in chat (no extra files created).
 
 ### Query
 
@@ -122,8 +101,7 @@ When asked to health-check the wiki, invoke the **`wiki-lint`** skill (available
 
 ## Workflow rules
 
-- **Ingest one source at a time** unless the user explicitly batches.
-- **Always confirm angle** before writing many pages — a quick "I'll emphasize X, Y, Z; OK?" beats redoing work.
+- **Let the `wiki-data-ingestion` skill govern batching and angle** — it asks the user about grouping and only confirms angle when the user explicitly specifies one.
 - **Never modify `raw/`**.
 - Add always a reference to **`raw/`** in the **`wiki/`** generated document. 
 - **Update `index.md` and `log.md` on every ingest** — these are the navigation backbone.
@@ -138,6 +116,7 @@ Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) whe
 - **`anaplan-formula-agent`** (`.claude/skills/anaplan-formula-agent/SKILL.md`) — write, explain, debug, or optimize Anaplan formulas using full model context. Trigger whenever the user asks to write/fix/refactor a formula, mentions a specific module/line item/list, asks about Classic vs Polaris engine differences, or has uploaded model CSVs. Includes a Step-0 context-loading protocol, engine-determination gate, Planual checklist, and `references/classic-vs-polaris.md` for engine-specific function behavior. Prefer this skill over generic formula reasoning whenever model context is available.
 - **`anaplan-module-mapping`** (`.claude/skills/anaplan-module-mapping/SKILL.md`) — the **dual-explanation standard** for wiring line items across modules. Trigger whenever connecting/feeding one module into another, writing cross-module formulas (`SUM:`, `LOOKUP:`, `SELECT:`, dot-notation references), explaining data flow, or justifying why a formula is written a certain way. Always delivers two separate explanations per formula: (1) financial/functional logic and (2) Anaplan technical mechanics. Includes a dimension-alignment checklist, sign-convention reference, and common CA→FS mapping scenarios. Composes with `anaplan-formula-agent` — use both when the formula is both cross-module and engine-sensitive.
 - **`wiki-lint`** (Cowork plugin skill, not a project skill) — full sanity-check pass on this wiki. Trigger on "lint the wiki", "health check", "check for orphan pages", "wiki cleanup", or any similar phrasing. Covers: orphans, broken links, stale stats, contradictions, undocumented files. Auto-fixes safe issues, flags the rest, and appends to `log.md`. Generic — works on any markdown wiki, not Anaplan-specific.
+- **`wiki-data-ingestion`** (Cowork plugin skill, not a project skill) — structured ingest of new sources into the wiki. Trigger whenever the user drops a file into `raw/`, says "ingest", "process this CSV", "update the wiki with this file", or any variant. Handles general docs and model CSVs (with automatic first-time vs delta detection), path acquisition, multi-file grouping, index/log updates, and a mandatory post-ingest summary. Always use this skill instead of doing ad-hoc ingest work.
 
 ## Anaplan-specific guidance
 

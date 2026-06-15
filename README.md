@@ -10,7 +10,7 @@ The wiki is the agent's **external memory** — not the product. The point is th
 
 - **Claude Code as an Anaplan model-builder agent** with a project-specific system prompt (`CLAUDE.md`) that defines a vault schema, ingest/query/lint workflows, and Anaplan-aware conventions (DISCO, PLANS, engine-aware reasoning).
 - **A vault layout** that separates immutable sources (`raw/`) from generated, queryable wiki pages (`wiki/`).
-- **Three skills** that auto-activate from context: `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning), `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula), and `wiki-lint` (generic wiki sanity-check — orphans, broken links, stale stats, contradictions, auto-fix pass).
+- **Four skills** that auto-activate from context: `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning), `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula), `wiki-lint` (generic wiki sanity-check — orphans, broken links, stale stats, contradictions, auto-fix pass), and `wiki-data-ingestion` (structured ingest of docs and model CSVs — path acquisition, grouping, delta detection, index/log updates, post-ingest summary).
 - **Obsidian compatibility** — open the vault in Obsidian to browse `[[wiki links]]` visually while Claude maintains it.
 
 ---
@@ -55,7 +55,7 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
         │       └── classic-vs-polaris.md
         └── anaplan-module-mapping/
             └── SKILL.md
-# wiki-lint is a Cowork plugin skill — install via the skill store, not here
+# wiki-lint and wiki-data-ingestion are Cowork plugin skills — install via the skill store, not here
 ```
 
 Only `CLAUDE.md`, both `.claude/skills/` folders, and the empty top-level directories are needed to start — Claude will create the wiki pages, `index.md`, and `log.md` as you ingest content.
@@ -82,6 +82,8 @@ Copy both `.claude/skills/` subfolders into your vault:
 
 **`wiki-lint`** (Cowork plugin skill — install separately via the Cowork skill store) — auto-activates on "lint the wiki", "health check", "check for orphan pages", "wiki cleanup", and similar phrasing. Runs five standard checks: orphan pages, broken internal links, stale counts/stats, contradictions across pages, undocumented companion files. Fixes what's safe automatically (registers orphans in indexes, corrects stale counts, notes undocumented files) and flags anything requiring judgment. Appends a dated entry to `log.md`. Generic — works on any markdown wiki, not specific to Anaplan.
 
+**`wiki-data-ingestion`** (Cowork plugin skill — install separately via the Cowork skill store) — auto-activates whenever you say "ingest", "process this CSV", "I dropped something in raw/", or any variant. Handles the full ingest pipeline: asks for file paths if not provided (or auto-discovers by diffing `raw/` against `wiki/sources/`), groups multiple files into batches by topic, classifies each batch as general doc or model CSV, auto-detects first-time vs incremental delta for CSVs, applies only deltas on re-uploads (preserving your annotations), updates all indexes and `log.md`, and ends with a structured post-ingest summary in chat.
+
 ### 4. Start Claude Code in the vault root
 
 ```powershell
@@ -101,15 +103,15 @@ Drop a file into the right `raw/` subfolder, then tell Claude:
 
 > "Ingest `raw/docs/<new-clipping>.md`."
 
-Claude will summarize the source, confirm the angle of emphasis, create a `wiki/sources/YYYY-MM-DD-<slug>.md` summary page, touch every relevant concept/function/pattern page, update `index.md`, and append to `log.md`.
+The `wiki-data-ingestion` skill activates automatically. If you don't provide a path, it will ask; if you'd rather not specify one, it discovers new files by comparing `raw/` against `wiki/sources/`. It then creates a `wiki/sources/YYYY-MM-DD-<slug>.md` summary page, touches every relevant concept/function/pattern page, updates `index.md`, and appends to `log.md`. A structured summary is printed in chat when done.
 
 ### Re-upload a model CSV
 
-Drop the new CSV into `raw/models/<Model>/` (overwrite the existing file — prior versions are not kept), then:
+Drop the new CSV(s) into `raw/models/<Model>/`, then:
 
-> "Ingest the new `<Model>` CSVs as a delta."
+> "Ingest the new `<Model>` CSVs."
 
-Claude diffs against the previous version, applies only added/removed/renamed/modified items to the wiki, preserves your annotations, and writes a new dated source page summarizing **what changed**.
+The `wiki-data-ingestion` skill detects automatically whether this is a first-time ingest or a re-upload by checking `wiki/sources/` and `wiki/models/`. On a re-upload it diffs against the prior version, applies only added/removed/renamed/modified items, saves the new raw file with a date suffix (never overwriting the old one), preserves your annotations, and writes a new dated delta source page.
 
 ### Ask model-building questions
 
@@ -155,5 +157,6 @@ What's checked in here as a working example:
 - `.claude/skills/anaplan-formula-agent/` — formula-writing skill (project skill)
 - `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill (project skill)
 - `wiki-lint` — generic wiki sanity-check skill (Cowork plugin skill, install via skill store)
+- `wiki-data-ingestion` — structured ingest pipeline for docs and model CSVs (Cowork plugin skill, install via skill store)
 - `raw/docs/` — sample ingested sources (Anapedia clippings, methodology docs)
 - `wiki/`, `index.md`, `log.md`, and `analyses/` are local-only and not checked in — Claude generates them as you ingest content. Start by copying `CLAUDE.md.example` to `CLAUDE.md`, customizing it, and ingesting your first source.
