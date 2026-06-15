@@ -10,7 +10,7 @@ The wiki is the agent's **external memory** — not the product. The point is th
 
 - **Claude Code as an Anaplan model-builder agent** with a project-specific system prompt (`CLAUDE.md`) that defines a vault schema, ingest/query/lint workflows, and Anaplan-aware conventions (DISCO, PLANS, engine-aware reasoning).
 - **A vault layout** that separates immutable sources (`raw/`) from generated, queryable wiki pages (`wiki/`).
-- **Two project skills** that auto-activate from context: `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning) and `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula).
+- **Three skills** that auto-activate from context: `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning), `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula), and `wiki-lint` (generic wiki sanity-check — orphans, broken links, stale stats, contradictions, auto-fix pass).
 - **Obsidian compatibility** — open the vault in Obsidian to browse `[[wiki links]]` visually while Claude maintains it.
 
 ---
@@ -55,6 +55,7 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
         │       └── classic-vs-polaris.md
         └── anaplan-module-mapping/
             └── SKILL.md
+# wiki-lint is a Cowork plugin skill — install via the skill store, not here
 ```
 
 Only `CLAUDE.md`, both `.claude/skills/` folders, and the empty top-level directories are needed to start — Claude will create the wiki pages, `index.md`, and `log.md` as you ingest content.
@@ -78,6 +79,8 @@ Copy both `.claude/skills/` subfolders into your vault:
 **`anaplan-formula-agent`** — auto-activates when you ask Claude to write, fix, refactor, or explain a formula; mention a module/line item/list by name; ask about Classic vs Polaris differences; or have model CSVs ingested. Includes a Step-0 context-loading protocol, Planual checklist, and `references/classic-vs-polaris.md`.
 
 **`anaplan-module-mapping`** — auto-activates whenever you wire one module into another: cross-module formulas (`SUM:`, `LOOKUP:`, `SELECT:`, dot-notation), data-flow questions, or "why is this formula written this way?" questions. Always delivers two separate explanations per formula — financial/functional logic first, then Anaplan mechanics — plus a dimension-alignment checklist and sign-convention reference.
+
+**`wiki-lint`** (Cowork plugin skill — install separately via the Cowork skill store) — auto-activates on "lint the wiki", "health check", "check for orphan pages", "wiki cleanup", and similar phrasing. Runs five standard checks: orphan pages, broken internal links, stale counts/stats, contradictions across pages, undocumented companion files. Fixes what's safe automatically (registers orphans in indexes, corrects stale counts, notes undocumented files) and flags anything requiring judgment. Appends a dated entry to `log.md`. Generic — works on any markdown wiki, not specific to Anaplan.
 
 ### 4. Start Claude Code in the vault root
 
@@ -118,9 +121,9 @@ Claude reads the master `index.md`, descends into sub-indexes, follows `[[wiki l
 
 ### Health-check the vault
 
-> "Run a vault health check" (or "lint the vault")
+> "Run a vault health check" (or "lint the vault" / "wiki sanity check")
 
-Claude scans for broken `[[wiki links]]`, orphan pages, index drift, stale paths, frontmatter issues, and missing cross-references, and reports a prioritized list of fixes.
+Triggers the **`wiki-lint`** skill, which scans for orphan pages, broken `[[wiki links]]`, stale counts in index files, contradictions across pages, and undocumented companion files. It auto-fixes safe issues and reports anything requiring manual attention. Requires the `wiki-lint` Cowork plugin skill to be installed.
 
 ---
 
@@ -148,10 +151,9 @@ Claude scans for broken `[[wiki links]]`, orphan pages, index drift, stale paths
 What's checked in here as a working example:
 
 - `CLAUDE.md` — the system prompt
-- `.claude/skills/anaplan-formula-agent/` — formula-writing skill
-- `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill
 - `CLAUDE.md.example` — copy this to `CLAUDE.md` and fill in your vault root path, model names, and engine assignments
-- `.claude/skills/anaplan-formula-agent/` — formula-writing skill
-- `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill
+- `.claude/skills/anaplan-formula-agent/` — formula-writing skill (project skill)
+- `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill (project skill)
+- `wiki-lint` — generic wiki sanity-check skill (Cowork plugin skill, install via skill store)
 - `raw/docs/` — sample ingested sources (Anapedia clippings, methodology docs)
 - `wiki/`, `index.md`, `log.md`, and `analyses/` are local-only and not checked in — Claude generates them as you ingest content. Start by copying `CLAUDE.md.example` to `CLAUDE.md`, customizing it, and ingesting your first source.

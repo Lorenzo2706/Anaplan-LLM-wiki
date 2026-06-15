@@ -118,14 +118,7 @@ When the user asks a question:
 
 ### Lint
 
-When asked to health-check:
-
-- Contradictions across pages
-- Stale claims superseded by newer sources
-- Orphan pages (no inbound `[[links]]`)
-- Concepts mentioned but missing their own page
-- Missing cross-references
-- Suggestions for sources to look for next
+When asked to health-check the wiki, invoke the **`wiki-lint`** skill (available as a Cowork plugin skill). It covers: orphan pages, broken internal links, stale counts/stats in index pages, contradictions across pages, and undocumented companion files. It auto-fixes what's unambiguous and flags anything requiring judgment. After the pass it appends a `## [YYYY-MM-DD] lint | …` entry to `log.md`.
 
 ## Workflow rules
 
@@ -144,6 +137,7 @@ Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) whe
 
 - **`anaplan-formula-agent`** (`.claude/skills/anaplan-formula-agent/SKILL.md`) — write, explain, debug, or optimize Anaplan formulas using full model context. Trigger whenever the user asks to write/fix/refactor a formula, mentions a specific module/line item/list, asks about Classic vs Polaris engine differences, or has uploaded model CSVs. Includes a Step-0 context-loading protocol, engine-determination gate, Planual checklist, and `references/classic-vs-polaris.md` for engine-specific function behavior. Prefer this skill over generic formula reasoning whenever model context is available.
 - **`anaplan-module-mapping`** (`.claude/skills/anaplan-module-mapping/SKILL.md`) — the **dual-explanation standard** for wiring line items across modules. Trigger whenever connecting/feeding one module into another, writing cross-module formulas (`SUM:`, `LOOKUP:`, `SELECT:`, dot-notation references), explaining data flow, or justifying why a formula is written a certain way. Always delivers two separate explanations per formula: (1) financial/functional logic and (2) Anaplan technical mechanics. Includes a dimension-alignment checklist, sign-convention reference, and common CA→FS mapping scenarios. Composes with `anaplan-formula-agent` — use both when the formula is both cross-module and engine-sensitive.
+- **`wiki-lint`** (Cowork plugin skill, not a project skill) — full sanity-check pass on this wiki. Trigger on "lint the wiki", "health check", "check for orphan pages", "wiki cleanup", or any similar phrasing. Covers: orphans, broken links, stale stats, contradictions, undocumented files. Auto-fixes safe issues, flags the rest, and appends to `log.md`. Generic — works on any markdown wiki, not Anaplan-specific.
 
 ## Anaplan-specific guidance
 
