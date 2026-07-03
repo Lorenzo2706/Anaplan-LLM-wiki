@@ -192,6 +192,8 @@ Apply these automatically. Reference: [Planual](`.\Anaplan LLM wiki\wiki\pattern
     Example: Reporting module should not reference a Calculation module that references back to the Reporting module. 
     Always pay attention to dependencies and data flow. 
 
+14. **Never combine SUM with LOOKUP in the same line item formula.** It leads to long calcualtion time. 
+
 ---
 
 ## Task Playbook

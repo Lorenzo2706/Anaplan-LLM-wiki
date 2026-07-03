@@ -7,9 +7,9 @@ description: >
   similar phrasing — or whenever you notice `CLAUDE.md.example` exists but `CLAUDE.md`
   does not yet, which signals an unbootstrapped clone. Handles: flattening the shipped
   `raw/docs/First setup/` sample bundle, simplifying `.gitignore`, adopting `CLAUDE.md`
-  from the example (with the transitional callouts stripped), and verifying which skills
-  are present vs. still need installing from the Cowork skill store. One-time per vault —
-  always check current state first so re-running is a safe no-op.
+  from the example (with the transitional callouts stripped), create the project structure
+  and verifying which skills are present vs. still need installing from the Cowork skill
+  store. One-time per vault — always check current state first so re-running is a safe no-op.
 ---
 
 # First Setup — Bootstrap a Fresh Vault
@@ -99,7 +99,14 @@ Only if `CLAUDE.md` does not already exist:
 
 ---
 
-## Phase 4 — Summary
+## Phase 4 - Build the project structure
+
+Create the folder structure for for the vault as specified in `CLAUDE.md`. 
+Just leave the placeholders for the user to fill in later.
+
+---
+
+## Phase 5 — Summary
 
 End with a structured summary, always — even if some phases were skipped because the
 vault was already partially set up:
