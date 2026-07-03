@@ -41,6 +41,8 @@ to Phase 1 with the provided paths.
   1. Read `wiki/sources/` index to build a set of already-ingested source slugs/filenames.
   2. Scan `raw/docs/`, `raw/models/`, and `raw/logs/` for files whose basenames do NOT
      appear in any existing `wiki/sources/` page (match on filename stem, case-insensitive).
+     **Skip `raw/docs/First setup/` entirely** — it's a curated onboarding bundle shared
+     with other makers, not new source material to ingest.
   3. Present the candidate list to the user:
      > "I found these files that don't appear to be ingested yet: [list]. Should I proceed
      > with all of them, or only some?"

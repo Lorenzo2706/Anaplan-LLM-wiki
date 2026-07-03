@@ -4,6 +4,8 @@
 /.obsidian
 /raw/*
 !/raw/docs
+/raw/docs/*
+!/raw/docs/First setup
 /index.md
 /log.md
 /analyses
