@@ -5,11 +5,12 @@ description: >
   Trigger whenever the user says "run first-time setup", "set up this vault", "bootstrap
   this repo", "initial setup", "onboard this repo", "flatten the sample docs", or any
   similar phrasing — or whenever you notice `CLAUDE.md.example` exists but `CLAUDE.md`
-  does not yet, which signals an unbootstrapped clone. Handles: flattening the shipped
-  `raw/docs/First setup/` sample bundle, simplifying `.gitignore`, adopting `CLAUDE.md`
-  from the example (with the transitional callouts stripped), create the project structure
-  and verifying which skills are present vs. still need installing from the Cowork skill
-  store. One-time per vault — always check current state first so re-running is a safe no-op.
+  does not yet, which signals an unbootstrapped clone. Handles: creating the vault's
+  empty folder skeleton, flattening the shipped `raw/docs/First setup/` sample bundle,
+  simplifying `.gitignore`, adopting `CLAUDE.md` from the example (with the transitional
+  callouts stripped), and verifying which skills are present vs. still need installing
+  from the Cowork skill store. One-time per vault — always check current state first so
+  re-running is a safe no-op.
 ---
 
 # First Setup — Bootstrap a Fresh Vault
@@ -24,18 +25,49 @@ re-running against an already-set-up vault does nothing destructive.
 
 Before changing anything, check:
 
-1. Does `raw/docs/First setup/` exist?
-2. Does `CLAUDE.md` already exist at the vault root (as opposed to only `CLAUDE.md.example`)?
-3. Does `.gitignore` still contain the `First setup`-specific carve-out (`/raw/docs/*` /
+1. Which of the vault's structural directories already exist: `raw/models/`, `raw/logs/`,
+   `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`,
+   `wiki/sources/`, `analyses/`, `Clippings/`.
+2. Does `raw/docs/First setup/` exist?
+3. Does `CLAUDE.md` already exist at the vault root (as opposed to only `CLAUDE.md.example`)?
+4. Does `.gitignore` still contain the `First setup`-specific carve-out (`/raw/docs/*` /
    `!/raw/docs/First setup`)?
-4. Which skill folders exist under `.claude/skills/`?
+5. Which skill folders exist under `.claude/skills/`?
 
-If **both** (1) is false and (2) is true, the vault is already set up — tell the user so
-and ask whether they want you to re-verify anyway rather than silently doing nothing.
+If all structural directories from (1) already exist, (2) is false, and (3) is true, the
+vault is already fully set up — tell the user so and ask whether they want you to
+re-verify anyway rather than silently doing nothing.
 
 ---
 
-## Phase 1 — Flatten the sample docs
+## Phase 1 — Build the project structure
+
+Create whichever of the following directories from (Phase 0, check 1) don't already
+exist. Empty is fine — Claude populates them over time as content is ingested:
+
+- `raw/models/`
+- `raw/logs/`
+- `raw/assets/`
+- `wiki/concepts/`
+- `wiki/functions/`
+- `wiki/models/`
+- `wiki/patterns/`
+- `wiki/sources/`
+- `analyses/`
+- `Clippings/`
+
+Guardrails:
+- **Never touch a directory that already exists** — creating it again is a no-op, but
+  don't delete or clear anything inside it.
+- **Don't create `raw/docs/`** here — Phase 2 owns it (it either already exists from the
+  shipped sample bundle, or gets created there when flattening lands files into it).
+- **Don't create `index.md` or `log.md`** — per `CLAUDE.md`, these are generated
+  organically on first ingest, not pre-seeded. Creating empty stand-ins now just leaves
+  dead placeholders to overwrite later.
+
+---
+
+## Phase 2 — Flatten the sample docs
 
 Only if `raw/docs/First setup/` exists:
 
@@ -44,7 +76,7 @@ Only if `raw/docs/First setup/` exists:
    or skip) — never silently overwrite.
 2. Move every file from `raw/docs/First setup/` up into `raw/docs/`.
 3. Delete the now-empty `raw/docs/First setup/` folder.
-4. If `.gitignore` has the `First setup`-specific carve-out (see Phase 0, check 3),
+4. If `.gitignore` has the `First setup`-specific carve-out (see Phase 0, check 4),
    simplify it back to the standard convention:
    ```diff
     /raw/*
@@ -61,20 +93,20 @@ PowerShell, but don't assume that shell is available.
 
 ---
 
-## Phase 2 — Adopt `CLAUDE.md`
+## Phase 3 — Adopt `CLAUDE.md`
 
 Only if `CLAUDE.md` does not already exist:
 
 1. Copy `CLAUDE.md.example` to `CLAUDE.md` (keep the `.example` file in place — it's the
    template's reference copy for future upstream updates).
 2. In the new `CLAUDE.md`, strip the transitional callouts that only make sense on the
-   shipped (unflattened) layout — they no longer apply once Phase 1 has run:
+   shipped (unflattened) layout — they no longer apply once Phase 2 has run:
    - The `> [!note] This reference repo ships its sample docs nested under raw/docs/First
      setup/ ...` callout under **Version control**.
    - The trailing sentence on the `wiki-data-ingestion` skill bullet starting "If you're
      still on the shipped sample layout, exclude `raw/docs/First setup/` ...".
 
-   If Phase 1 was skipped (e.g. the user already flattened manually, or declined), leave
+   If Phase 2 was skipped (e.g. the user already flattened manually, or declined), leave
    these notes in place — they're still accurate.
 3. Ask the user for the values needed to personalize `CLAUDE.md`:
    - Vault root path, to replace `<your-vault-root>` (default to the current working
@@ -88,7 +120,7 @@ Only if `CLAUDE.md` does not already exist:
 
 ---
 
-## Phase 3 — Verify skills
+## Phase 4 — Verify skills
 
 1. Report which of `anaplan-formula-agent` and `anaplan-module-mapping` are present under
    `.claude/skills/` (they ship with the repo, so normally both are).
@@ -96,13 +128,6 @@ Only if `CLAUDE.md` does not already exist:
    folders under `.claude/skills/`, or otherwise accessible via the `Skill` tool). These
    ship as Cowork plugin skills, not repo files — if they're missing, tell the user to
    install them from the Cowork skill store and that ingest/lint won't work until they do.
-
----
-
-## Phase 4 - Build the project structure
-
-Create the folder structure for for the vault as specified in `CLAUDE.md`. 
-Just leave the placeholders for the user to fill in later.
 
 ---
 
@@ -114,6 +139,7 @@ vault was already partially set up:
 ```
 ## First setup complete
 
+**Structure:** [N directories created: <list> | already complete | skipped: <reason>]
 **Flattened:** [raw/docs/First setup/ → raw/docs/, N files moved | already flat | skipped: <reason>]
 **.gitignore:** [simplified | left as-is: <reason>]
 **CLAUDE.md:** [created from example, transitional notes stripped | already existed | pending values: <list>]

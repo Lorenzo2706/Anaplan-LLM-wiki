@@ -10,7 +10,7 @@ The wiki is the agent's **external memory** — not the product. The point is th
 
 - **Claude Code as an Anaplan model-builder agent** with a project-specific system prompt (`CLAUDE.md`) that defines a vault schema, ingest/query/lint workflows, and Anaplan-aware conventions (DISCO, PLANS, engine-aware reasoning).
 - **A vault layout** that separates immutable sources (`raw/`) from generated, queryable wiki pages (`wiki/`).
-- **Five skills** that auto-activate from context: `first-setup` (one-time bootstrap of a freshly cloned vault — flattens the sample docs, adopts `CLAUDE.md`, verifies skills are in place), `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning), `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula), `wiki-lint` (generic wiki sanity-check — orphans, broken links, stale stats, contradictions, auto-fix pass), and `wiki-data-ingestion` (structured ingest of docs and model CSVs — path acquisition, grouping, delta detection, index/log updates, post-ingest summary).
+- **Five skills** that auto-activate from context: `first-setup` (one-time bootstrap of a freshly cloned vault — builds the empty folder skeleton, flattens the sample docs, adopts `CLAUDE.md`, verifies skills are in place), `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning), `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula), `wiki-lint` (generic wiki sanity-check — orphans, broken links, stale stats, contradictions, auto-fix pass), and `wiki-data-ingestion` (structured ingest of docs and model CSVs — path acquisition, grouping, delta detection, index/log updates, post-ingest summary).
 - **Obsidian compatibility** — open the vault in Obsidian to browse `[[wiki links]]` visually while Claude maintains it.
 
 ---
@@ -49,6 +49,8 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
 └── .claude/
     ├── settings.local.json
     └── skills/
+        ├── first-setup/
+        │   └── SKILL.md
         ├── anaplan-formula-agent/
         │   ├── SKILL.md
         │   └── references/
@@ -58,9 +60,17 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
 # wiki-lint and wiki-data-ingestion are Cowork plugin skills — install via the skill store, not here
 ```
 
-Only `CLAUDE.md`, both `.claude/skills/` folders, and the empty top-level directories are needed to start — Claude will create the wiki pages, `index.md`, and `log.md` as you ingest content.
+Only `CLAUDE.md.example`, all three `.claude/skills/` folders, and `raw/docs/First setup/` (the sample bundle) ship with the repo — the empty top-level directories (`raw/models/`, `raw/logs/`, `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`, `wiki/sources/`, `analyses/`, `Clippings/`) don't exist yet on a fresh clone, since git doesn't track empty folders. Create them yourself:
 
-> [!tip] Steps 2–3 below (flattening the sample docs and adopting `CLAUDE.md`) are automated by the `first-setup` skill, which ships in `.claude/skills/`. Once you've cloned the repo, just start Claude Code in the vault root and say **"run first-time setup"** — it'll do both steps, ask you for model names/engines to fill into `CLAUDE.md`, and report what's left to do manually (like installing the Cowork plugin skills). The steps below are the manual walkthrough if you'd rather do it by hand.
+```powershell
+New-Item -ItemType Directory -Force -Path raw/models, raw/logs, raw/assets, `
+  wiki/concepts, wiki/functions, wiki/models, wiki/patterns, wiki/sources, `
+  analyses, Clippings | Out-Null
+```
+
+Claude will create the wiki pages, `index.md`, and `log.md` as you ingest content — don't pre-create those.
+
+> [!tip] This step and steps 2–3 below (flattening the sample docs and adopting `CLAUDE.md`) are all automated by the `first-setup` skill, which ships in `.claude/skills/`. Once you've cloned the repo, just start Claude Code in the vault root and say **"run first-time setup"** — it'll build the folder skeleton, flatten the docs, adopt `CLAUDE.md` and ask you for model names/engines to fill in, then report what's left to do manually (like installing the Cowork plugin skills). The steps below are the manual walkthrough if you'd rather do it by hand.
 
 ### 2. Flatten the sample docs
 
@@ -174,7 +184,7 @@ What's checked in here as a working example:
 
 - `CLAUDE.md` — the system prompt
 - `CLAUDE.md.example` — copy this to `CLAUDE.md` and fill in your vault root path, model names, and engine assignments
-- `.claude/skills/first-setup/` — one-time bootstrap skill: flattens the sample docs, adopts `CLAUDE.md` from the example, verifies skills are in place (project skill)
+- `.claude/skills/first-setup/` — one-time bootstrap skill: builds the empty folder skeleton, flattens the sample docs, adopts `CLAUDE.md` from the example, verifies skills are in place (project skill)
 - `.claude/skills/anaplan-formula-agent/` — formula-writing skill (project skill)
 - `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill (project skill)
 - `wiki-lint` — generic wiki sanity-check skill (Cowork plugin skill, install via skill store)
