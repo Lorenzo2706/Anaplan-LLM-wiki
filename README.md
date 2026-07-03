@@ -27,7 +27,28 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
 
 ## Setup
 
-### 1. Create the vault
+### Quick start (recommended)
+
+1. Clone the repo and start Claude Code inside it:
+   ```powershell
+   git clone <repo-url> <vault-root>
+   cd <vault-root>
+   claude
+   ```
+2. Tell Claude: **"Run first-time setup."** The `first-setup` skill (ships in `.claude/skills/`, so it's available immediately) takes it from there — it:
+   - builds the empty `raw/models/`, `raw/logs/`, `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`, `wiki/sources/`, `analyses/`, and `Clippings/` folders (git doesn't track empty directories, so these don't exist yet on a fresh clone),
+   - flattens the shipped `raw/docs/First setup/` sample bundle into `raw/docs/` and simplifies `.gitignore` to match,
+   - copies `CLAUDE.md.example` to `CLAUDE.md`, strips the notes that only apply to the unflattened layout, and asks you for your vault root path and each model's name + engine (Classic/Polaris) to fill in,
+   - reports which of `anaplan-formula-agent`, `anaplan-module-mapping`, `wiki-lint`, and `wiki-data-ingestion` are present vs. still need installing.
+3. Install any Cowork plugin skills the summary flags as missing (`wiki-lint`, `wiki-data-ingestion` — install these from the Cowork skill store).
+
+That's it. Claude will create `wiki/` pages, `index.md`, and `log.md` as you start ingesting content. The skill is idempotent, so re-running "run first-time setup" later is a safe no-op if something didn't finish.
+
+### Manual setup
+
+Prefer to do it by hand, or want to see exactly what the skill automates? Here's the same process step by step.
+
+#### 1. Create the vault
 
 ```
 <vault-root>/
@@ -70,9 +91,7 @@ New-Item -ItemType Directory -Force -Path raw/models, raw/logs, raw/assets, `
 
 Claude will create the wiki pages, `index.md`, and `log.md` as you ingest content — don't pre-create those.
 
-> [!tip] This step and steps 2–3 below (flattening the sample docs and adopting `CLAUDE.md`) are all automated by the `first-setup` skill, which ships in `.claude/skills/`. Once you've cloned the repo, just start Claude Code in the vault root and say **"run first-time setup"** — it'll build the folder skeleton, flatten the docs, adopt `CLAUDE.md` and ask you for model names/engines to fill in, then report what's left to do manually (like installing the Cowork plugin skills). The steps below are the manual walkthrough if you'd rather do it by hand.
-
-### 2. Flatten the sample docs
+#### 2. Flatten the sample docs
 
 This repo ships its sample corpus nested under `raw/docs/First setup/` rather than directly under `raw/docs/` — that's just how the maintainer shared a curated subset of a larger personal `raw/docs/` folder, not the intended layout. Before your first ingest, un-nest it and drop the wrapper folder:
 
@@ -90,7 +109,7 @@ If you're keeping this as a git repo of your own, also drop the `First setup`-sp
 -!/raw/docs/First setup
 ```
 
-### 3. Drop in `CLAUDE.md`
+#### 3. Drop in `CLAUDE.md`
 
 Remove the .example extension from the `CLAUDE.md`and copy it from this repo into your vault root. It defines:
 
@@ -102,7 +121,7 @@ Remove the .example extension from the `CLAUDE.md`and copy it from this repo int
 
 Edit the engine-default block and any team-specific naming conventions to fit your context.
 
-### 4. Install the project skills
+#### 4. Install the project skills
 
 Copy both `.claude/skills/` subfolders into your vault:
 
@@ -114,7 +133,7 @@ Copy both `.claude/skills/` subfolders into your vault:
 
 **`wiki-data-ingestion`** (Cowork plugin skill — install separately via the Cowork skill store) — auto-activates whenever you say "ingest", "process this CSV", "I dropped something in raw/", or any variant. Handles the full ingest pipeline: asks for file paths if not provided (or auto-discovers by diffing `raw/` against `wiki/sources/`), groups multiple files into batches by topic, classifies each batch as general doc or model CSV, auto-detects first-time vs incremental delta for CSVs, applies only deltas on re-uploads (preserving your annotations), updates all indexes and `log.md`, and ends with a structured post-ingest summary in chat.
 
-### 5. Start Claude Code in the vault root
+#### 5. Start Claude Code in the vault root
 
 ```powershell
 cd <vault-root>
