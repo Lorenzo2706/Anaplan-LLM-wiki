@@ -187,6 +187,11 @@ Apply these automatically. Reference: [Planual](`.\Anaplan LLM wiki\wiki\pattern
 12. **Name intermediate line items clearly.** Prefix with `x ` (helper) or
     `SYS ` (system) per Planual naming conventions.
 
+13. **Avoid circular references.** If a formula references itself (directly or
+    indirectly), restructure the model to eliminate the circularity. This means to always follow DISCO principles. 
+    Example: Reporting module should not reference a Calculation module that references back to the Reporting module. 
+    Always pay attention to dependencies and data flow. 
+
 ---
 
 ## Task Playbook

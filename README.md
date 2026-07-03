@@ -31,7 +31,7 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
 
 ```
 <vault-root>/
-├── CLAUDE.md                   # project system prompt (see step 2)
+├── CLAUDE.md                   # project system prompt (see step 3)
 ├── README.md                   # this file
 ├── index.md                    # master index (Claude maintains)
 ├── log.md                      # append-only operation log (Claude maintains)
@@ -60,7 +60,25 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
 
 Only `CLAUDE.md`, both `.claude/skills/` folders, and the empty top-level directories are needed to start — Claude will create the wiki pages, `index.md`, and `log.md` as you ingest content.
 
-### 2. Drop in `CLAUDE.md`
+### 2. Flatten the sample docs
+
+This repo ships its sample corpus nested under `raw/docs/First setup/` rather than directly under `raw/docs/` — that's just how the maintainer shared a curated subset of a larger personal `raw/docs/` folder, not the intended layout. Before your first ingest, un-nest it and drop the wrapper folder:
+
+```powershell
+Move-Item "raw/docs/First setup/*" "raw/docs/"
+Remove-Item "raw/docs/First setup"
+```
+
+If you're keeping this as a git repo of your own, also drop the `First setup`-specific carve-out from `.gitignore` so it matches the standard convention described in `CLAUDE.md.example`:
+
+```diff
+ /raw/*
+ !/raw/docs
+-/raw/docs/*
+-!/raw/docs/First setup
+```
+
+### 3. Drop in `CLAUDE.md`
 
 Remove the .example extension from the `CLAUDE.md`and copy it from this repo into your vault root. It defines:
 
@@ -72,7 +90,7 @@ Remove the .example extension from the `CLAUDE.md`and copy it from this repo int
 
 Edit the engine-default block and any team-specific naming conventions to fit your context.
 
-### 3. Install the project skills
+### 4. Install the project skills
 
 Copy both `.claude/skills/` subfolders into your vault:
 
@@ -84,7 +102,7 @@ Copy both `.claude/skills/` subfolders into your vault:
 
 **`wiki-data-ingestion`** (Cowork plugin skill — install separately via the Cowork skill store) — auto-activates whenever you say "ingest", "process this CSV", "I dropped something in raw/", or any variant. Handles the full ingest pipeline: asks for file paths if not provided (or auto-discovers by diffing `raw/` against `wiki/sources/`), groups multiple files into batches by topic, classifies each batch as general doc or model CSV, auto-detects first-time vs incremental delta for CSVs, applies only deltas on re-uploads (preserving your annotations), updates all indexes and `log.md`, and ends with a structured post-ingest summary in chat.
 
-### 4. Start Claude Code in the vault root
+### 5. Start Claude Code in the vault root
 
 ```powershell
 cd <vault-root>
@@ -158,5 +176,5 @@ What's checked in here as a working example:
 - `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill (project skill)
 - `wiki-lint` — generic wiki sanity-check skill (Cowork plugin skill, install via skill store)
 - `wiki-data-ingestion` — structured ingest pipeline for docs and model CSVs (Cowork plugin skill, install via skill store)
-- `raw/docs/` — sample ingested sources (Anapedia clippings, methodology docs)
+- `raw/docs/First setup/` — sample ingested sources (Anapedia clippings, methodology docs), shipped nested under a wrapper folder for sharing — flatten into `raw/docs/` during setup (step 2 above)
 - `wiki/`, `index.md`, `log.md`, and `analyses/` are local-only and not checked in — Claude generates them as you ingest content. Start by copying `CLAUDE.md.example` to `CLAUDE.md`, customizing it, and ingesting your first source.
