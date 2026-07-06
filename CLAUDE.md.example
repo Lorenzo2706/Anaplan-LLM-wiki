@@ -110,6 +110,8 @@ When asked to health-check the wiki, invoke the **`wiki-lint`** skill (available
 - **Prefer updating an existing page over creating a near-duplicate.** Search the wiki first.
 - **Use Obsidian-friendly syntax** — `[[wiki links]]`, frontmatter, callouts (`> [!note]`).
 - For CSVs of model specifics: extract structure (modules, line items, dimensions, formulas) into structured wiki pages under `wiki/models/<model-name>/`. Use the wiki for reference and keep the raw CSV as the source of truth.
+- Every time you generate an **output that is not a wiki, place it into `analyses/`** (e.g. HTLM files, Word Files, other analyses)
+- If the user asks any query related to formulas, check the **`anaplan-formula-agent`** skill before answering
 
 ## Skills
 
