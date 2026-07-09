@@ -38,6 +38,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.edge.service import Service as EdgeService
 
+load_dotenv()
+
 import models
 
 try:
@@ -51,8 +53,6 @@ except ImportError:
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
-
-load_dotenv()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -79,6 +79,18 @@ DEFAULTS = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 DEFAULT_OUTPUT_FOLDER = os.path.join(os.path.expanduser("~"), "Documents", "Anaplan NUX Reports")
+
+
+def _safe_filename(value: str, fallback: str = "model") -> str:
+    """Return a Windows-safe filename fragment."""
+    safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(value)).strip(" ._")
+    return safe or fallback
+
+
+def _safe_sheet_title(value: str, fallback: str = "Sheet") -> str:
+    """Return an Excel-safe worksheet title."""
+    safe = re.sub(r"[\[\]:*?/\\]", "_", str(value)).strip()
+    return (safe or fallback)[:31]
 
 
 def _separator(char="─", width=60):
@@ -169,12 +181,6 @@ def _collect_config() -> dict:
     print("STEP 2 of 4 — Login credentials")
     _separator()
     username = _ask("\nAnaplan email address", default=DEFAULTS["username"])
-    env_password = os.getenv("ANAPLAN_PASSWORD", "")
-    if env_password:
-        password = env_password
-        print("  ✓ Password loaded from .env")
-    else:
-        password = getpass.getpass("Anaplan password (hidden input): ")
 
     print(
         "\nDoes your organisation use SSO (Single Sign-On) to log into Anaplan?\n"
@@ -183,6 +189,15 @@ def _collect_config() -> dict:
     )
     use_sso = _ask_yes_no("Use SSO?", default=DEFAULTS["use_sso"])
     print(f"  ✓ SSO: {'yes' if use_sso else 'no'}\n")
+
+    password = ""
+    if not use_sso:
+        env_password = os.getenv("ANAPLAN_PASSWORD", "")
+        if env_password:
+            password = env_password
+            print("  ✓ Password loaded from .env")
+        else:
+            password = getpass.getpass("Anaplan password (hidden input): ")
 
     # ── Output folder ─────────────────────────────────────────────────────────
     _separator()
@@ -224,10 +239,15 @@ def _collect_config() -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def setup_logging(output_folder: str, model_name: str, timestamp: str) -> str:
-    log_file = os.path.join(output_folder, f"Anaplan NUX Report - {model_name}_{timestamp}.log")
+    safe_model_name = _safe_filename(model_name)
+    log_file = os.path.join(output_folder, f"Anaplan NUX Report - {safe_model_name}_{timestamp}.log")
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s\t%(levelname)s\t%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
 
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
@@ -255,7 +275,7 @@ def _nested(d: dict, *keys, default="") -> str:
 
 
 def table_to_workbook(workbook: Workbook, table: list, name: str):
-    sheet = workbook.create_sheet(name, 0)
+    sheet = workbook.create_sheet(_safe_sheet_title(name), 0)
     for row in table:
         sheet.append(row)
 
@@ -359,13 +379,16 @@ def login(browser: webdriver.Remote, config: dict):
             EC.element_to_be_clickable((By.ID, "prelogin-anaplan-basic"))
         ).click()
 
-    WebDriverWait(browser, 15).until(
-        EC.presence_of_element_located((By.ID, "password"))
-    ).send_keys(config["password"])
-    time.sleep(1)
-    WebDriverWait(browser, 15).until(
-        EC.element_to_be_clickable((By.ID, "btn-login"))
-    ).click()
+        WebDriverWait(browser, 15).until(
+            EC.presence_of_element_located((By.ID, "password"))
+        ).send_keys(config["password"])
+        time.sleep(1)
+        WebDriverWait(browser, 15).until(
+            EC.element_to_be_clickable((By.ID, "btn-login"))
+        ).click()
+    else:
+        print("  Complete the SSO login in the browser, then return here.")
+        input("  Press Enter once Anaplan has loaded: ")
 
     time.sleep(6)
     print("  ✓ Logged in.\n")
@@ -381,8 +404,9 @@ def _select_model(browser: webdriver.Remote, config: dict) -> tuple[str, str, st
     live API browser if none are configured or the user wants to browse.
     Returns (model_id, model_name, workspace_guid, customer_id).
     """
+    configured_models = getattr(models, "MODELS", {})
     shortcuts = {
-        key: m for key, m in models.MODELS.items()
+        key: m for key, m in configured_models.items()
         if m.get("customer_id") and m.get("workspace_id") and m.get("model_id")
     }
     if not shortcuts:
@@ -393,7 +417,7 @@ def _select_model(browser: webdriver.Remote, config: dict) -> tuple[str, str, st
     _separator()
     keys = list(shortcuts.keys())
     for i, key in enumerate(keys, 1):
-        print(f"  [{i}] {shortcuts[key]['name']}")
+        print(f"  [{i}] {shortcuts[key].get('name', key)}")
     print(f"  [{len(keys) + 1}] Browse all models…")
 
     while True:
@@ -402,8 +426,9 @@ def _select_model(browser: webdriver.Remote, config: dict) -> tuple[str, str, st
             idx = int(entry) - 1
             if 0 <= idx < len(keys):
                 m = shortcuts[keys[idx]]
-                print(f"\n  ✓ Selected: {m['name']}")
-                return m["model_id"], m["name"], m["workspace_id"], m["customer_id"]
+                model_name = m.get("name", keys[idx])
+                print(f"\n  ✓ Selected: {model_name}")
+                return m["model_id"], model_name, m["workspace_id"], m["customer_id"]
             if idx == len(keys):
                 return _choose_model_from_api(browser, config)
         except ValueError:
@@ -461,15 +486,15 @@ def _choose_model_from_api(browser: webdriver.Remote, config: dict) -> tuple[str
 
     model_id   = model["ModelGuid"]
     model_name = model["ModelName"]
-    ws_guid    = model.get("CurrentWorkspaceGuid", "")
-    customer   = model.get("CustomerGuid", model.get("TenantGuid", ""))
+    ws_guid    = model.get("CurrentWorkspaceGuid") or model.get("WorkspaceGuid", "")
+    customer   = model.get("CustomerGuid") or model.get("TenantGuid", "")
 
     if not customer:
         try:
             ws_resp  = api_get(browser, f"{main_url}/1/3/workspaces/{ws_guid}")
             customer = ws_resp.get("workspace", {}).get("customerId", "")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  ! Could not resolve customer ID for workspace {ws_guid}: {e}")
 
     print(f"\n  ✓ Selected: {model_name}")
     print(f"    Model ID  : {model_id}")
@@ -702,6 +727,11 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
     out_dir   = config["output_folder"]
     sds_url   = f"{SDS_HOST}/a/springboard-definition-service"
 
+    if not customer:
+        raise RuntimeError("Missing customer ID for selected model; cannot fetch NUX pages.")
+    if not ws_guid:
+        raise RuntimeError("Missing workspace ID for selected model; cannot open Modeling UI exports.")
+
     model_api_url   = f"{main_url}/2/0/models/{model_id}"
     model_pages_url = f"{sds_url}/customer/{customer}/model/{model_id}/pages"
     model_new_url   = (
@@ -709,7 +739,6 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
         f"/workspaces/{ws_guid}/models/{model_id}"
     )
 
-    nux_re    = re.compile(r"^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$")
     timestamp = time.strftime("%Y%m%d_%H%M%S")
 
     setup_logging(out_dir, model_name, timestamp)
@@ -760,36 +789,69 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
     ]]
 
     for i, page in enumerate(pages):
-        _progress(i + 1, len(pages), page["name"][:40])
+        page_name = page.get("name", "<unnamed page>")
+        page_guid = page.get("guid", "")
+        page_type = page.get("pageType", "")
+        app_guid = page.get("appGuid", "")
+        app_name = page.get("appName", "")
+        page_url = f"{main_url}/a/apps/app/{app_guid}/boards/{page_guid}"
+        _progress(i + 1, len(pages), page_name[:40])
 
         # Actions per pagina
-        if page["pageType"] in ("BOARD", "GRID-PAGE"):
+        if page_type in ("BOARD", "GRID-PAGE"):
             try:
                 page_content = api_get(
-                    browser, f"{sds_url}/{page['pageType'].lower()}s/{page['guid']}"
+                    browser, f"{sds_url}/{page_type.lower()}s/{page_guid}"
                 )
-            except Exception:
+            except Exception as e:
+                logging.warning(
+                    "Could not fetch page content for %s (%s): %s",
+                    page_name, page_guid, e,
+                )
                 page_content = {}
 
             page_actions: set = set()
-            if page["pageType"] == "BOARD":
+            if page_type == "BOARD":
                 widgets = []
                 for row in page_content.get("rows", []):
                     for col in row.get("columns", []):
                         widgets += col.get("widgets", [])
             else:
                 widgets = page_content.get("widgets", [])
-                page_actions.update(
-                    a["actionId"] for a in page_content.get("actions", [])
-                )
+                for action in page_content.get("actions", []):
+                    if not isinstance(action, dict):
+                        continue
+                    action_id = action.get("actionId")
+                    if action_id:
+                        page_actions.add(action_id)
 
             for widget in widgets:
+                if not isinstance(widget, dict):
+                    continue
                 wdef = widget.get("widgetDefinition", {})
                 for a in wdef.get("widgetActions", []):
-                    page_actions.add(a["actionId"])
+                    if not isinstance(a, dict):
+                        continue
+                    action_id = a.get("actionId")
+                    if action_id:
+                        page_actions.add(action_id)
                 if wdef.get("type") == "ACTION":
-                    for a in json.loads(wdef.get("actions", "[]")):
-                        page_actions.add(a["id"])
+                    try:
+                        widget_actions = json.loads(wdef.get("actions") or "[]")
+                    except json.JSONDecodeError as e:
+                        logging.warning(
+                            "Could not parse action widget JSON on %s (%s): %s",
+                            page_name, page_guid, e,
+                        )
+                        widget_actions = []
+                    if not isinstance(widget_actions, list):
+                        widget_actions = []
+                    for a in widget_actions:
+                        if not isinstance(a, dict):
+                            continue
+                        action_id = a.get("id")
+                        if action_id:
+                            page_actions.add(action_id)
 
             for aid in page_actions:
                 if aid not in actions_dict:
@@ -797,41 +859,54 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
                 actions_table.append([
                     actions_dict[aid]["name"],
                     actions_dict[aid]["type"],
-                    page["appName"],
-                    page["name"],
-                    f"{main_url}/a/apps/app/{page['appGuid']}/boards/{page['guid']}",
+                    app_name,
+                    page_name,
+                    page_url,
                     aid,
-                    page["appGuid"],
-                    page["guid"],
+                    app_guid,
+                    page_guid,
                 ])
 
         # Views per pagina
         try:
             page_data = api_get(
-                browser, f"{model_pages_url}/{page['guid']}?moduleUsage=true"
+                browser, f"{model_pages_url}/{page_guid}?moduleUsage=true"
             )
-        except Exception:
+        except Exception as e:
+            logging.warning(
+                "Could not fetch module usage for %s (%s): %s",
+                page_name, page_guid, e,
+            )
             page_data = {}
 
-        data_sources = {
-            card["dataSourceId"]
-            for card in page_data.get("pageDataSources", [])
-            if card.get("dataSourceId")
-        }
+        data_sources = set()
+        for card in page_data.get("pageDataSources", []):
+            if not isinstance(card, dict):
+                continue
+            data_source_id = card.get("dataSourceId")
+            if data_source_id:
+                data_sources.add(data_source_id)
         for ds_id in data_sources:
             if ds_id not in views:
                 continue
             views_table.append([
                 views[ds_id]["name"],
-                page["appName"],
-                page["name"],
+                app_name,
+                page_name,
                 f"{model_new_url}/tabs/{ds_id}",
-                f"{main_url}/a/apps/app/{page['appGuid']}/boards/{page['guid']}",
+                page_url,
                 ds_id,
-                page["appGuid"],
-                page["guid"],
+                app_guid,
+                page_guid,
             ])
-            modules[views[ds_id]["module"]]["count"] += 1
+            module_id = views[ds_id]["module"]
+            if module_id in modules:
+                modules[module_id]["count"] += 1
+            else:
+                logging.warning(
+                    "View %s (%s) references missing module ID %s",
+                    views[ds_id]["name"], ds_id, module_id,
+                )
 
     print()  # newline after progress bar
     table_to_workbook(workbook, actions_table, "Actions Usage Report")
@@ -845,7 +920,7 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
 
     # ── Actions detail via Modeling UI Export ──────────────────────────────────
     print("  → Step 4/5: Downloading actions detail via Modeling UI...")
-    sheet_label     = f"Actions {model_name}"[:31]
+    sheet_label     = _safe_sheet_title(f"Actions {model_name}", fallback="Actions")
     act_detail_table = None
 
     for section in ("imports", "actions"):
@@ -864,7 +939,8 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
 
     # ── Save ───────────────────────────────────────────────────────────────────
     print("  → Step 5/5: Saving Excel file...")
-    excel_path = "/".join([out_dir.rstrip("/"), f"Anaplan NUX Report - {model_name}_{timestamp}.xlsx"])
+    safe_model_name = _safe_filename(model_name)
+    excel_path = os.path.join(out_dir, f"Anaplan NUX Report - {safe_model_name}_{timestamp}.xlsx")
     workbook.save(excel_path)
 
     _separator("═")

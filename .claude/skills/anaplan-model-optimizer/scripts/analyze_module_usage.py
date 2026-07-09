@@ -60,7 +60,11 @@ def load_modules_csv(model_dir: Path) -> dict:
     modules = {}
     for row in rows:
         name = (row.get("") or "").strip()
-        if not name or name.startswith(SECTION_HEADER_PREFIX):
+        # Anaplan pads section-header rows (e.g. "◼️ CALCULATION MODULES") with
+        # leading U+2800 (braille pattern blank) characters, so a plain
+        # startswith() on the glyph misses them - strip that padding first.
+        stripped = name.lstrip("⠀ \t")
+        if not stripped or stripped.startswith(SECTION_HEADER_PREFIX):
             continue
         modules[name] = {
             "functional_area": (row.get("Functional Area") or "").strip(),
