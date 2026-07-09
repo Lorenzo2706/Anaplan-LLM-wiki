@@ -113,6 +113,39 @@ When asked to health-check the wiki, invoke the **`wiki-lint`** skill (available
 - Every time you generate an **output that is not a wiki, place it into `analyses/`** (e.g. HTLM files, Word Files, other analyses)
 - If the user asks any query related to formulas, check the **`anaplan-formula-agent`** skill before answering
 
+## Scraper toolchain
+
+Alongside the wiki, the vault root can hold a small Python toolchain that pulls live usage data straight from Anaplan's new-UX (NUX) — data that never appears in a CSV export. This is what the `anaplan-model-optimizer` skill's dead-module analysis is built on. (Optional — only relevant if you've installed the `anaplan-model-optimizer` skill.)
+
+- **`scraper_ux.py`** — interactive wizard that logs into Anaplan via Selenium/Edge, lets you pick a model, and exports a 5-sheet Excel report (`All Views`, `Actions Usage Report`, `Views Usage Report`, `Modules Usage Count`, `Actions <model>`). Every default (username, environment, SSO, output folder) is sourced from `.env` — no hardcoded credentials.
+- **`models.py`** — a `MODELS` dict of quick-select shortcuts (e.g. `modela`) so the wizard's "pick from a live list" step can be scripted instead of browsed. An entry only counts as a usable shortcut once its `customer_id`, `workspace_id`, and `model_id` are all present. `CUSTOMER_ID` and the workspace ID are shared across every model in the tenant — only `model_id` differs per model. To add a model: append a `<PREFIX>_MODEL_ID` to `.env` and mirror the example entry here.
+- **`.env`** (gitignored) — all credentials and environment config: `ANAPLAN_USERNAME`, `ANAPLAN_PASSWORD`, `ANAPLAN_ENVIRONMENT`, `ANAPLAN_USE_SSO`, `ANAPLAN_OUTPUT_FOLDER`, the shared `CUSTOMER_ID`/workspace ID, and per-model `<PREFIX>_MODEL_ID` entries.
+- **`UI/`** (gitignored) — default output folder for scraped Excel reports and per-run logs. May contain real model data — never commit it.
+
+**Non-obvious infra detail:** the `springboard-definition-service` API (builds the Actions/Views usage sheets) always lives on a fixed `us1a.app.anaplan.com` host, regardless of which regional shard the model itself is hosted on (`eu2a`, etc — see `SDS_HOST` in `scraper_ux.py`). Pointing that call at the model's own shard instead returns a silent 503.
+
+Run it with:
+
+```powershell
+pip install selenium openpyxl webdriver-manager python-dotenv
+python scraper_ux.py
+```
+
+It opens a real (non-headless) Edge window — the driver is auto-downloaded via Selenium Manager. Every wizard prompt defaults from `.env`; only the model-selection number and the final "scrape another model?" question need real input.
+
+`.claude/skills/anaplan-model-optimizer/scripts/analyze_module_usage.py` cross-references a scraped report against `raw/models/<Model>/Modules.csv` and `Imports.csv` to separate genuinely dead modules from ones that are merely invisible in the NUX by design (Data/Load/Calculation modules in the DISCO pattern normally have zero NUX exposure):
+
+```bash
+python .claude/skills/anaplan-model-optimizer/scripts/analyze_module_usage.py \
+  --excel "<path to NUX report.xlsx>" \
+  --model-dir "raw/models/<Model Name>" \
+  --model-name "<Model Name>" \
+  --out-json "analyses/<Model Name>-module-optimization-<date>.json" \
+  --out-markdown "analyses/<Model Name>-module-optimization-<date>.md"
+```
+
+There is no automated test suite in this repo — verification is by actually running the scraper against a live tenant and inspecting the resulting Excel.
+
 ## Skills
 
 Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) when the trigger conditions in the skill's frontmatter match — do not just read the file.
@@ -120,6 +153,7 @@ Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) whe
 - **`first-setup`** (`.claude/skills/first-setup/SKILL.md`) — one-time bootstrap of a freshly cloned vault. Trigger on "run first-time setup", "set up this vault", "bootstrap this repo", or similar. Builds the empty `raw/`/`wiki/`/`analyses/`/`Clippings/` folder skeleton, flattens `raw/docs/First setup/` into `raw/docs/`, simplifies `.gitignore`, adopts `CLAUDE.md` from `CLAUDE.md.example` (stripping transitional notes), and reports which skills still need installing. Idempotent — safe to invoke on an already-set-up vault.
 - **`anaplan-formula-agent`** (`.claude/skills/anaplan-formula-agent/SKILL.md`) — write, explain, debug, or optimize Anaplan formulas using full model context. Trigger whenever the user asks to write/fix/refactor a formula, mentions a specific module/line item/list, asks about Classic vs Polaris engine differences, or has uploaded model CSVs. Includes a Step-0 context-loading protocol, engine-determination gate, Planual checklist, and `references/classic-vs-polaris.md` for engine-specific function behavior. Prefer this skill over generic formula reasoning whenever model context is available.
 - **`anaplan-module-mapping`** (`.claude/skills/anaplan-module-mapping/SKILL.md`) — the **dual-explanation standard** for wiring line items across modules. Trigger whenever connecting/feeding one module into another, writing cross-module formulas (`SUM:`, `LOOKUP:`, `SELECT:`, dot-notation references), explaining data flow, or justifying why a formula is written a certain way. Always delivers two separate explanations per formula: (1) financial/functional logic and (2) Anaplan technical mechanics. Includes a dimension-alignment checklist, sign-convention reference, and common CA→FS mapping scenarios. Composes with `anaplan-formula-agent` — use both when the formula is both cross-module and engine-sensitive.
+- **`anaplan-model-optimizer`** (`.claude/skills/anaplan-model-optimizer/SKILL.md`) — end-to-end production model housekeeping. Trigger on "optimize this model", "clean up my Anaplan model", "which modules can I delete", "unused/orphaned/dead modules", or any mention of the NUX/UX scraper (`scraper_ux.py`, at the vault root alongside `models.py`). Runs the scraper for the chosen model, then cross-references the resulting Excel against `raw/models/<Model>/Modules.csv` and `Imports.csv` (via the bundled `scripts/analyze_module_usage.py`) so it never flags Data/Load/Calculation modules that are intentionally invisible in the UX but still feed other modules by formula. Reports deletion candidates in chat and saves the full report under `analyses/`. Never deletes anything itself — recommendation only.
 - **`wiki-lint`** (Cowork plugin skill, not a project skill) — full sanity-check pass on this wiki. Trigger on "lint the wiki", "health check", "check for orphan pages", "wiki cleanup", or any similar phrasing. Covers: orphans, broken links, stale stats, contradictions, undocumented files. Auto-fixes safe issues, flags the rest, and appends to `log.md`. Generic — works on any markdown wiki, not Anaplan-specific.
 - **`wiki-data-ingestion`** (Cowork plugin skill, not a project skill) — structured ingest of new sources into the wiki. Trigger whenever the user drops a file into `raw/`, says "ingest", "process this CSV", "update the wiki with this file", or any variant. Handles general docs and model CSVs (with automatic first-time vs delta detection), path acquisition, multi-file grouping, index/log updates, and a mandatory post-ingest summary. Always use this skill instead of doing ad-hoc ingest work. If you're still on the shipped sample layout, exclude `raw/docs/First setup/` from auto-discovery until you've flattened it (see README § Setup).
 
