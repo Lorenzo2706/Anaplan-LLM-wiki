@@ -75,6 +75,7 @@ Prefer to do it by hand, or want to see exactly what the skill automates? Here's
         │   ├── SKILL.md
         │   └── references/
         │       └── classic-vs-polaris.md
+        │       └── polaris-function-compatibility.md    
         ├── anaplan-module-mapping/
         │   └── SKILL.md
         ├── anaplan-model-optimizer/
