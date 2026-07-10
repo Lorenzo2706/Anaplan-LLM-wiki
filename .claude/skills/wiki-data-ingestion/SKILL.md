@@ -3,12 +3,13 @@ name: wiki-data-ingestion
 description: >
   Ingest one or more new sources into the Anaplan LLM wiki — including raw docs, articles,
   PDFs, web clippings, and model CSV exports. Trigger whenever the user mentions ingesting a
-  file, dropping something into raw/, adding a new source to the wiki, or updating the wiki
-  with new content. Also trigger when the user says things like "I added a new doc", "process
-  this CSV", "update the wiki with this file", "I dropped something in raw/", or any variant
-  of "ingest". Handles both general sources and model CSV re-uploads (with automatic delta
-  detection). Always use this skill instead of doing ad-hoc ingest work — it ensures indexes,
-  log, and cross-references are consistently updated.
+  file, dropping something into raw/, adding a new source to the wiki, refreshing or
+  re-scraping a model's data, or updating the wiki with new content. Also trigger when the
+  user says things like "I added a new doc", "process this CSV", "refresh the <Model> data",
+  "update the wiki with this file", "I dropped something in raw/", or any variant of "ingest".
+  Handles both general sources and model CSV ingestion — first-time, incremental delta, and
+  scraper-automated refresh. Always use this skill instead of doing ad-hoc ingest work — it
+  ensures indexes, log, and cross-references are consistently updated.
 ---
 
 # Wiki Data Ingestion
@@ -20,7 +21,24 @@ you always know what got created, what got updated, and what the wiki state is a
 
 ---
 
-## Phase 0 — Acquire file paths
+## Phase 0 — Which path: document, or model data?
+
+Two source families need different acquisition steps. Decide which path applies before
+doing anything else:
+
+- **Path A — Document ingestion**: general docs, articles, PDFs, web clippings, logs, or any
+  file(s) the user already has in hand and wants placed into the wiki as-is.
+- **Path B — Model data ingestion**: the user wants a model's blueprint data (Modules, Line
+  Items, Lists, Actions, Roles, etc.) refreshed or ingested for the first time — e.g. "refresh
+  the AAC data", "pull the latest FSP export", "ingest model X". This path is scraper-driven
+  (`scrape_model_data.py`) — the user does not need to have any file in hand.
+
+If the user's message doesn't make the path obvious, ask: *"Is this a document/source to
+ingest, or a model data refresh?"*
+
+---
+
+## Phase 0A — Acquire file paths (Path A only)
 
 Before any reading or writing, you need to know exactly which files to ingest.
 
@@ -47,6 +65,83 @@ to Phase 1 with the provided paths.
      > "I found these files that don't appear to be ingested yet: [list]. Should I proceed
      > with all of them, or only some?"
   4. Wait for confirmation before proceeding.
+
+---
+
+## Phase 0B — Resolve the model and its scraper shortcut (Path B only)
+
+1. **Ask which model** if not already stated: *"Which model — AAC, FSP 2.0, MJP, or a new
+   one?"*
+
+2. **Check whether it's already ingested** — does `wiki/models/<Model>/` and/or
+   `raw/models/<Model>/` exist? Do this check yourself; don't ask the user. It decides
+   first-time (Phase 3B) vs incremental-delta (Phase 3C) later. If the folder name doesn't
+   already exist, confirm the exact display name with the user before creating it — match
+   the short-code convention already in use (`AAC`, `MJP`, `FSP 2.0`), not a full descriptive
+   name.
+
+3. **Resolve a scraper shortcut.** Check `models.py`'s `MODELS` dict for a key whose entry has
+   `customer_id`, `workspace_id`, and `model_id` all present for this model.
+   - **Shortcut exists** → note the key and the model's exact folder name, go to Phase 1B.
+   - **No shortcut** (true today for AAC and MJP — only `fsp` is fully configured, and its
+     `models.py` display name is `"FSP"`, not the wiki's `"FSP 2.0"`) → run:
+     ```powershell
+     python scrape_model_data.py --list-models
+     ```
+     This logs in and calls the live Anaplan model-list API directly — no `models.py`
+     shortcut needed for this step. It prints JSON: `model_name`, `model_id`,
+     `workspace_name`, `workspace_id`, `customer_id` for every model visible to this account.
+     Filter to candidates matching the requested name and **show them to the user for
+     explicit confirmation** — the same model name can exist in more than one workspace.
+   - Once confirmed, add `<PREFIX>_MODEL_ID=<model_id>` to `.env` (reuse a shared workspace
+     var like `CUSTOMER_ID`/`DEV_POLARIS` if it matches; otherwise ask the user what to call
+     the new one) and mirror the `fsp` entry in `models.py` with `customer_id`,
+     `workspace_id`, `model_id`. Show the user what you're about to add before writing it —
+     this is the first time this model becomes scriptable, worth a quick confirmation.
+   - Proceed to Phase 1B with the new shortcut key.
+
+---
+
+## Phase 1B — Snapshot before scraping (Path B only)
+
+The scraper overwrites each of its 13 target files in place — this vault does not keep dated
+archive copies of raw CSVs ([[feedback_no_dated_raw_copies]]; this applies to the scraper path
+too). That means the "before" state must be captured before the scraper runs, or it's gone by
+the time you want to diff.
+
+1. If `raw/models/<Model Name>/` already exists, copy only the files whose names are in the
+   scraper's fixed 13-name target set (see `SCRAPE_MODEL_DATA.md` → "What it produces") into a
+   temp folder under the session's scratchpad directory. This is ephemeral diff input only —
+   never write it into `raw/`, and delete it once Phase 3C has applied the delta.
+2. If the folder doesn't exist yet (true first-time ingest), skip this — there's nothing to
+   diff against.
+3. Leave any file in that folder whose name is *not* in the 13-name set untouched and out of
+   scope (e.g. FSP 2.0's `Imports.csv`, `Import Data Sources.csv` — the scraper doesn't
+   produce these and never will).
+
+## Phase 2B — Run the scraper
+
+```powershell
+python scrape_model_data.py <shortcut> --name "<exact existing folder name>"
+```
+
+Always pass `--name` set to the folder name already used under `raw/models/`/`wiki/models/`
+(e.g. `"FSP 2.0"`, not `"FSP"`) — a shortcut's own display name in `models.py` can differ from
+the wiki's folder name. Getting this wrong creates a second, wrong-named sibling folder
+instead of updating the existing one.
+
+Read the script's own summary output — a ✅/✗ line per target file plus an `N/13 exported`
+count:
+- **All 13 succeeded** → every file in the 13-name set under `raw/models/<Model Name>/` is
+  now current.
+- **Some failed** → the failed targets' prior files (if any) are left untouched, not deleted.
+  Treat those specific files as still reflecting their pre-scrape state, ingest the deltas for
+  whatever did succeed, and say explicitly in the Phase 4 summary which targets didn't refresh
+  this run — don't silently treat a failed export as "no change."
+
+Once the run completes, go to Phase 2 to classify (it will resolve to a model-CSV batch) and
+then Phase 3B (first-time) or Phase 3C (delta, diffing against the Phase 1B snapshot instead
+of a prior raw file).
 
 ---
 
@@ -169,15 +264,22 @@ For each batch of general sources:
 The export is mostly the same as a prior version (~80% unchanged). Don't re-ingest from
 scratch — apply only what changed.
 
-1. **Diff against prior state** — compare the new CSV(s) against:
-   - The prior raw CSV in `raw/models/<Model>/` (look for the most recent versioned file).
-   - If no prior raw CSV is available, diff against the wiki model pages as a proxy.
+1. **Diff against prior state.** This vault does not keep dated archive copies of raw CSVs
+   ([[feedback_no_dated_raw_copies]]) — the prior raw file is gone by the time you're doing
+   this diff, so pick the right "before" source:
+   - **Scraper path (Phase 1B ran)** → diff against the ephemeral snapshot taken before the
+     scraper overwrote the file. This is the accurate, file-level diff.
+   - **Manually-dropped CSV (Path A/no Phase 1B snapshot)** → the user has typically already
+     overwritten the raw file in place before handing it to you, so there is no prior raw
+     version left on disk. Diff against the wiki model pages as a proxy instead.
 
    Identify: **added**, **removed**, **renamed**, and **modified** items (modules, line items,
    formulas, dimensions, lists).
 
-2. **Save the new raw file with a date suffix** so prior versions remain for future diffs:
-   `<original-name>__YYYY-MM-DD.csv`. Never overwrite an existing raw file.
+2. **Do not create a dated archive copy of the new raw file.** It simply replaces what's on
+   disk at `raw/models/<Model>/<filename>.csv` — matching how the scraper itself overwrites,
+   and how the user already handles manual re-uploads. If you took a Phase 1B snapshot for
+   diffing, delete it once this delta has been applied.
 
 3. **Apply only the deltas to the wiki:**
    - Added items → create new pages or add sections.
@@ -213,6 +315,8 @@ After every ingest (regardless of type), end with a structured summary in chat. 
 
 **Mode:** [General source | First-time model CSV | Incremental delta]
 **Batch:** [file(s) processed]
+**Scraper run** (Path B only): [N/13 exported; list any targets that failed and were left
+  at their pre-scrape state]
 
 **Created:**
 - wiki/sources/... (source page)
@@ -240,10 +344,15 @@ If nothing was flagged, say so explicitly: "No issues flagged — wiki is consis
 
 ## Constraints and guardrails
 
-- **Never modify files under `raw/`** — they are immutable source documents.
+- **Never hand-edit files under `raw/`** — they are immutable source documents. The scraper
+  (Phase 2B) and manual re-uploads are the only sanctioned ways a raw model CSV changes; both
+  replace the file wholesale with a fresh authoritative export, not an edit.
 - **Always include a `sources:` frontmatter field** in every wiki page pointing back to the
   originating raw file.
-- **Never overwrite a prior raw CSV** — always append a date suffix to the new one.
+- **Never create a dated archive copy of a raw CSV** — overwrite it in place, whether the
+  refresh came from the scraper or a manual re-upload ([[feedback_no_dated_raw_copies]]).
+  Diff against a Phase 1B ephemeral snapshot (scraper path) or the wiki pages (manual path)
+  instead of a versioned raw file.
 - **One source page per ingest event**, not per file. If a batch of 3 related CSVs is
   ingested together, one source page covers all three.
 - **Prefer updating an existing wiki page over creating a near-duplicate.** Search

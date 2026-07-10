@@ -18,6 +18,14 @@ Roles Modules.csv    Roles Versions.csv   Roles Lists.csv
 Roles Actions.csv
 ```
 
+> **Not every model's raw folder has this exact set today.** `raw/models/AAC/` matches
+> it exactly, but `raw/models/FSP 2.0/` has only 9 of the 13 (missing the 5 Roles/Source
+> Models grids) plus two files the scraper doesn't produce at all (`Imports.csv`,
+> `Import Data Sources.csv`), and `raw/models/MJP/` has only 6. Re-running the scraper
+> only ever touches these 13 filenames — anything else already in the folder is left
+> alone, and any of the 13 that fail to export leave the prior file for that name
+> untouched rather than deleting it.
+
 ## Prerequisites
 
 - `pip install selenium openpyxl webdriver-manager python-dotenv` (same as the
@@ -48,6 +56,23 @@ results = download_model_exports("fsp", out_dir=r"raw/models/FSP 2.0")
 Edge window and logs in automatically via basic auth; no manual step is needed unless
 SSO is enabled. It prints a per-grid ✅/✗ summary and an `N/13 exported` line, and exits
 0 only when all 13 succeed.
+
+### Finding a model that isn't registered yet
+
+`scrape_model_data.py` refuses to scrape a raw model_id GUID directly — it needs a
+`models.py` shortcut with `customer_id`/`workspace_id`/`model_id`. If you don't have
+those for a model yet, fetch the live list instead of hunting through the Anaplan UI:
+
+```powershell
+python scrape_model_data.py --list-models
+```
+
+Logs in, calls the same `springboard-platform-gateway-service/models` API the
+interactive `scraper_ux.py` wizard uses for "Browse all models…", and prints every
+model visible to this account as JSON (`model_name`, `model_id`, `workspace_name`,
+`workspace_id`, `customer_id`) — no `models.py` shortcut required. Confirm the right
+entry with the user, then add it to `.env`/`models.py` (see "Adding a new model" below)
+before scraping.
 
 > **Default output vs. your real folders:** the default `out_dir` is
 > `raw/models/<--name>/`. Pass `--name "FSP 2.0"` (or `--out`) so it writes to the

@@ -34,15 +34,22 @@ From the command line:
     python scrape_model_data.py fsp
     python scrape_model_data.py fsp --name "FSP 2.0" --out "raw/models/FSP 2.0"
 
+To find a model that has no models.py shortcut yet (no export possible until
+one is registered):
+
+    python scrape_model_data.py --list-models
+
 Configuration (username, password, environment, SSO flag) is sourced
 from .env exactly like scraper_ux.py — importing scraper_ux triggers its
 load_dotenv() call, so no separate .env loading is needed here.
 
 Note: importing this module never launches a browser or touches the
-network — the browser is only created inside download_model_exports().
+network — the browser is only created inside download_model_exports() /
+list_available_models().
 """
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -317,6 +324,58 @@ def _build_config():
     }
 
 
+def list_available_models():
+    """
+    Log in and fetch every model visible to this account via the live Anaplan
+    API (springboard-platform-gateway-service), independent of models.MODELS
+    shortcuts. For use when a model hasn't been registered as a shortcut yet
+    and its workspace/customer IDs are unknown.
+
+    Returns a list of dicts: model_name, model_id, workspace_name,
+    workspace_id, customer_id — one per model, sorted by workspace then name.
+    """
+    config = _build_config()
+    download_dir = tempfile.mkdtemp(prefix="anaplan_list_models_")
+    browser = None
+    try:
+        browser = scraper_ux._create_browser(download_dir)
+        scraper_ux.login(browser, config)
+
+        main_url = config["main_url"]
+        data = scraper_ux.api_get(
+            browser,
+            f"{main_url}/a/springboard-platform-gateway-service/models?limit=50000&offset=0",
+        )
+        items = data.get("items", []) or []
+
+        out = []
+        for m in items:
+            ws_guid = m.get("CurrentWorkspaceGuid") or m.get("WorkspaceGuid", "")
+            customer = m.get("CustomerGuid") or m.get("TenantGuid", "")
+            if not customer and ws_guid:
+                try:
+                    ws_resp = scraper_ux.api_get(browser, f"{main_url}/1/3/workspaces/{ws_guid}")
+                    customer = ws_resp.get("workspace", {}).get("customerId", "")
+                except Exception:
+                    pass
+            out.append({
+                "model_name": m.get("ModelName"),
+                "model_id": m.get("ModelGuid"),
+                "workspace_name": m.get("CurrentWorkspaceName") or m.get("WorkspaceName") or "Unknown workspace",
+                "workspace_id": ws_guid,
+                "customer_id": customer,
+            })
+        out.sort(key=lambda m: (m["workspace_name"] or "", m["model_name"] or ""))
+        return out
+    finally:
+        if browser is not None:
+            try:
+                browser.quit()
+            except Exception:
+                pass
+        shutil.rmtree(download_dir, ignore_errors=True)
+
+
 def download_model_exports(model, out_dir=None, headless_download_dir=None, name=None):
     """
     Log into Anaplan, open the given model's model-settings shell, and
@@ -428,12 +487,29 @@ def _main():
     )
     parser.add_argument(
         "model",
+        nargs="?",
+        default=None,
         help="Shortcut key from models.MODELS (e.g. 'fsp') or a raw model_id GUID "
-             "(raw IDs currently still require a matching models.py shortcut).",
+             "(raw IDs currently still require a matching models.py shortcut). "
+             "Omit when using --list-models.",
     )
     parser.add_argument("--name", default=None, help="Override the model's display name.")
     parser.add_argument("--out", default=None, help="Output directory for the CSV files.")
+    parser.add_argument(
+        "--list-models", action="store_true",
+        help="Log in, fetch every model visible to this account via the live Anaplan "
+             "API, print it as JSON to stdout, and exit — no export, no models.py "
+             "shortcut required. Use this to find the model_id/workspace_id/customer_id "
+             "for a model that isn't registered in models.py yet.",
+    )
     args = parser.parse_args()
+
+    if args.list_models:
+        print(json.dumps(list_available_models(), indent=2))
+        sys.exit(0)
+
+    if not args.model:
+        parser.error("model is required unless --list-models is passed")
 
     results = download_model_exports(args.model, out_dir=args.out, name=args.name)
 
