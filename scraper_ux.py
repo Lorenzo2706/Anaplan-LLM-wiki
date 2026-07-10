@@ -723,7 +723,7 @@ def _progress(current: int, total: int, label: str = ""):
 def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: str,
            ws_guid: str, customer: str, download_dir: str):
 
-    main_url  = config["main_url"]
+    main_url  = config["main_url"].rstrip("/")
     out_dir   = config["output_folder"]
     sds_url   = f"{SDS_HOST}/a/springboard-definition-service"
 

@@ -78,12 +78,13 @@ sources: [path/to/source1.md, ...]
 
 Invoke the **`wiki-data-ingestion`** skill (Cowork plugin skill) for all ingest work — both general sources and model CSVs. The skill handles:
 
-- **Path acquisition** — asks for file paths if not provided; falls back to auto-discovery by comparing `raw/` against `wiki/sources/` if the user prefers.
+- **Path acquisition** — for general sources, asks for file paths if not provided (falls back to auto-discovery by comparing `raw/` against `wiki/sources/` if the user prefers). For model data, asks which model instead — no file needed if the optional scraper toolchain is set up, see below.
 - **Grouping** — for multiple files, asks whether they are related and builds batches accordingly (can be mixed).
 - **Source classification** — auto-detects general doc vs model CSV; for CSVs, auto-detects first-time vs incremental delta by checking `wiki/sources/` and `wiki/models/`.
 - **General source ingest** — creates `wiki/sources/YYYY-MM-DD-<slug>.md`, touches relevant concept/function/pattern pages, updates sub-indexes, appends to `log.md`.
+- **Model data ingest can be scraper-driven** — if `scrape_model_data.py` (vault root, optional) is set up, it pulls a model's 13 blueprint CSVs straight from Anaplan into `raw/models/<Model>/`, registering a shortcut in `.env`/`models.py` first (via `--list-models` + user confirmation) if the model isn't configured yet, then proceeds to first-time or incremental-delta ingest below. Manually-dropped CSVs always work as a fallback path.
 - **Model CSV first-time ingest** — seeds `wiki/models/<Model Name>/` with structured module/line-item pages, creates a dated source page, updates indexes.
-- **Model CSV incremental delta** — diffs against prior version, applies only added/removed/renamed/modified items, saves new raw file with date suffix, creates a new delta source page, flags removals instead of silently deleting.
+- **Model CSV incremental delta** — diffs against prior state (a pre-scrape snapshot for scraper refreshes, or the wiki pages as a proxy for manual re-uploads — this vault keeps no dated raw archives, raw CSVs are always overwritten in place), applies only added/removed/renamed/modified items, creates a new delta source page, flags removals instead of silently deleting.
 - **Post-ingest summary** — always prints a structured summary in chat (no extra files created).
 
 ### Query
@@ -111,7 +112,7 @@ When asked to health-check the wiki, invoke the **`wiki-lint`** skill (available
 - **Use Obsidian-friendly syntax** — `[[wiki links]]`, frontmatter, callouts (`> [!note]`).
 - For CSVs of model specifics: extract structure (modules, line items, dimensions, formulas) into structured wiki pages under `wiki/models/<model-name>/`. Use the wiki for reference and keep the raw CSV as the source of truth.
 - Every time you generate an **output that is not a wiki, place it into `analyses/`** (e.g. HTLM files, Word Files, other analyses)
-- If the user asks any query related to formulas, check the **`anaplan-formula-agent`** skill before answering
+- If the user asks any query related to line item formulas, check the **`anaplan-formula-agent`** skill before answering
 
 ## Scraper toolchain
 
@@ -119,6 +120,7 @@ Alongside the wiki, the vault root can hold a small Python toolchain that pulls 
 
 - **`scraper_ux.py`** — interactive wizard that logs into Anaplan via Selenium/Edge, lets you pick a model, and exports a 5-sheet Excel report (`All Views`, `Actions Usage Report`, `Views Usage Report`, `Modules Usage Count`, `Actions <model>`). Every default (username, environment, SSO, output folder) is sourced from `.env` — no hardcoded credentials.
 - **`models.py`** — a `MODELS` dict of quick-select shortcuts (e.g. `modela`) so the wizard's "pick from a live list" step can be scripted instead of browsed. An entry only counts as a usable shortcut once its `customer_id`, `workspace_id`, and `model_id` are all present. `CUSTOMER_ID` and the workspace ID are shared across every model in the tenant — only `model_id` differs per model. To add a model: append a `<PREFIX>_MODEL_ID` to `.env` and mirror the example entry here.
+- **`scrape_model_data.py`** — a separate exporter (reuses `scraper_ux.py`'s login as a black box) that pulls a model's 13 blueprint/settings CSVs (Modules, Line Items, Line Item Subsets, General Lists, Versions, Time Ranges, Actions, Source Models, Roles + Roles Modules/Versions/Lists/Actions) into `raw/models/<Model>/`, overwriting each in place — no dated copies. Run `python scrape_model_data.py <shortcut> --name "<Model Name>"`, or `--list-models` to fetch every model visible to this account via the live API when no shortcut exists yet (no `models.py` entry required for that step alone). This is what the `wiki-data-ingestion` skill's model-refresh path drives. Not every model folder will match its 13-file set exactly (some raw exports predate the scraper, or include files it doesn't produce) — see `SCRAPE_MODEL_DATA.md` for how partial/missing files are handled.
 - **`.env`** (gitignored) — all credentials and environment config: `ANAPLAN_USERNAME`, `ANAPLAN_PASSWORD`, `ANAPLAN_ENVIRONMENT`, `ANAPLAN_USE_SSO`, `ANAPLAN_OUTPUT_FOLDER`, the shared `CUSTOMER_ID`/workspace ID, and per-model `<PREFIX>_MODEL_ID` entries.
 - **`UI/`** (gitignored) — default output folder for scraped Excel reports and per-run logs. May contain real model data — never commit it.
 
