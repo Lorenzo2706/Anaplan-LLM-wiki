@@ -133,6 +133,12 @@ number of questions before proceeding. Never guess formats or dimensions.
 
 ## SUM vs LOOKUP Decision Rule
 
+**`SUM()` and `LOOKUP:` both take a mapping-module argument — same syntax slot.**
+Both exist to resolve a case where target and source sit on **different lists**
+that need an explicit mapping module to relate them (e.g. child list → parent
+list via a dedicated mapping module, or vice versa). Only reach for one of them
+when such a mapping module is actually in play.
+
 | Mapping table dimension | Formula |
 |---|---|
 | **Target** list → maps to Source list item | `LOOKUP` |
@@ -140,6 +146,20 @@ number of questions before proceeding. Never guess formats or dimensions.
 
 Ask: *"Where does the mapping live — in the target dimension or the source
 dimension?"* Target → LOOKUP. Source → SUM.
+
+**Do NOT use `SUM()` for a plain dimensional roll-up.** If the target module is
+simply dimensioned by a **subset** of the source module's dimensions (no separate
+list-to-list mapping module involved — e.g. target is `FSP versies, Year`, source
+is `FSP versies, Shareholders, Year`), and the source line item's Summary Method
+is **Sum**, a plain dot-reference (`'Source Module'.'Line Item'`) is enough —
+Anaplan aggregates across the missing dimension automatically. Wrapping this in
+`SUM(...)` is syntactically wrong, since there is no mapping argument to pass.
+Reserve `SUM()` for the case in the table above only.
+
+Quick test before writing either function: *"Is there an actual mapping module
+resolving a list-to-list relationship here, or does the target just have fewer
+dimensions than the source with Summary:Sum already set?"* — the first needs
+`SUM()`/`LOOKUP:`, the second needs nothing but the reference itself.
 
 ---
 

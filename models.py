@@ -14,7 +14,15 @@ umd = {
     "model_id": getenv("UMD_PROD_MODEL_ID"),
 }
 
+mjp = {
+    "name": "MJP",
+    "customer_id": getenv("CUSTOMER_ID"),
+    "workspace_id": getenv("MJP_PROD"),
+    "model_id": getenv("MJP_MODEL_ID"),
+}
+
 MODELS = {
     "fsp": fsp,
     "umd": umd,
+    "mjp": mjp,
 }

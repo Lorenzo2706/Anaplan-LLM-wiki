@@ -234,14 +234,17 @@ def main():
     report = analyze(args.excel, args.model_dir)
     md = to_markdown(report, model_name)
 
-    print(md)
-
     if args.out_json:
         args.out_json.parent.mkdir(parents=True, exist_ok=True)
         args.out_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
     if args.out_markdown:
         args.out_markdown.parent.mkdir(parents=True, exist_ok=True)
         args.out_markdown.write_text(md, encoding="utf-8")
+
+    try:
+        print(md)
+    except UnicodeEncodeError:
+        print(md.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8"))
 
 
 if __name__ == "__main__":
