@@ -32,6 +32,29 @@ from openpyxl import load_workbook
 FIXED_SHEETS = {"All Views", "Actions Usage Report", "Views Usage Report", "Modules Usage Count"}
 SECTION_HEADER_PREFIX = "◼"  # "◼️" - pseudo-header rows like "◼️ LOAD MODULES"
 
+# Manual deletion markers: model-owner intent captured in free-text Notes, or
+# (at module level) a Functional Area that itself reads "DELETE". Detection
+# here is purely additive - it must never suppress the reference/front-end
+# safety check, only annotate the result (see analyze() / analyze_line_items()).
+DELETE_MARKER_KEYWORDS = ["delete", "to be deleted", "obsolete", "deprecated", "remove"]
+
+
+def detect_manual_marker(notes: str, functional_area: str = "") -> dict:
+    """Scan Notes/Functional Area for a model-owner deletion marker.
+
+    Returns {"flagged": bool, "reasons": [str, ...]}. Never returns more than
+    one Notes-derived reason and one Functional-Area-derived reason, even if
+    several keywords independently match the same Notes text.
+    """
+    notes_l = (notes or "").lower()
+    matched_keywords = [kw for kw in DELETE_MARKER_KEYWORDS if kw in notes_l]
+    reasons = []
+    if matched_keywords:
+        reasons.append("Notes: " + ", ".join(f"'{kw}'" for kw in matched_keywords))
+    if "delete" in (functional_area or "").lower():
+        reasons.append("Functional Area contains 'DELETE'")
+    return {"flagged": bool(reasons), "reasons": reasons}
+
 
 def _read_csv_rows(path: Path, delimiter_candidates=(",", ";")):
     if not path.is_file():
