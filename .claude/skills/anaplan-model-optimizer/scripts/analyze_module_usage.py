@@ -116,6 +116,66 @@ def load_imports_csv(model_dir: Path) -> set:
     return used
 
 
+def load_line_items_csv(model_dir: Path) -> dict:
+    """Load Line Items.csv keyed by (module_name, line_item_name).
+
+    Line Items.csv carries its own per-line-item "Referenced By" and "Notes"
+    columns - unlike Modules.csv's aggregate signals, these are already at
+    the exact grain Pass 2 needs, no extraction/aggregation required.
+    """
+    rows = _read_csv_rows(model_dir / "Line Items.csv")
+    items = {}
+    for row in rows:
+        name = (row.get("") or "").strip()
+        module_name = (row.get("Module Name") or "").strip()
+        if not name or not module_name:
+            continue
+        items[(module_name, name)] = {
+            "notes": (row.get("Notes") or "").strip(),
+            "referenced_by": _extract_names(row.get("Referenced By", "")),
+        }
+    return items
+
+
+_DOTTED_REFERENCE_RE = re.compile(r"'([^']+)'\.(.+)$")
+
+
+def _parse_dotted_reference(obj: str):
+    """Extract (module_name, line_item_name) from an Imports.csv Source/Target
+    Object string's final path segment, e.g.
+    "Data Hub 2.0 / 'SYS 05. Date of Today'.Date MBH Master Data" ->
+    ("SYS 05. Date of Today", "Date MBH Master Data"). Module names routinely
+    contain periods (e.g. "SYS 05."), which is why only the quoted-module
+    pattern is trusted - a whole-module reference like "SM 02. General
+    Settings" has no quotes and correctly returns None.
+    """
+    if not obj:
+        return None
+    last_segment = obj.split(" / ")[-1].strip()
+    match = _DOTTED_REFERENCE_RE.search(last_segment)
+    if not match:
+        return None
+    return match.group(1).strip(), match.group(2).strip()
+
+
+def load_import_line_item_matches(model_dir: Path, known_pairs: set) -> set:
+    """Best-effort: which (module, line item) pairs already known from
+    Line Items.csv are named via dot-notation in Imports.csv Source/Target
+    Object. Only ever returns a subset of known_pairs - never invents a pair
+    that isn't already in this model's own Line Items.csv (which would
+    happen if a dot-notation reference happened to resolve to a different
+    model's module/line item of the same name).
+    """
+    rows = _read_csv_rows(model_dir / "Imports.csv")
+    matched = set()
+    for row in rows:
+        for value in row.values():
+            parsed = _parse_dotted_reference((value or "").strip())
+            if parsed and parsed in known_pairs:
+                matched.add(parsed)
+    return matched
+
+
 def load_excel(excel_path: Path):
     wb = load_workbook(excel_path, data_only=True, read_only=True)
 

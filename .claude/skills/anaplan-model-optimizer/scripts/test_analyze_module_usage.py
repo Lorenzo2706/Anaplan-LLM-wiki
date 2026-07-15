@@ -135,3 +135,56 @@ def test_to_markdown_modules_renders_flagged_but_kept_section(tmp_path):
     md = to_markdown_modules(report, "TestModel")
     assert "## Modules flagged for deletion but still active or kept" in md
     assert "IN01 Kept Referenced" in md.split("## Modules flagged for deletion but still active or kept")[1]
+
+
+from analyze_module_usage import (
+    load_line_items_csv,
+    _parse_dotted_reference,
+    load_import_line_item_matches,
+)
+
+
+def _write_line_items_csv(tmp_path: Path) -> Path:
+    model_dir = tmp_path / "LiModel"
+    model_dir.mkdir()
+    header = ",Format,Formula,Summary,Applies To,Time Scale,Time Range,Versions,Style,Cell Count,Populated Cell Count,Memory Used,Calculation Complexity,Calculation Effort,Notes,Read Access Driver,Write Access Driver,Users List,Parent,Is Summary,Formula Scope,Code,Use Switchover,Breakback,Start of Section,Data Tags,Referenced By,Module Name"
+    rows = [
+        "Line A,,,,,,,,,,,,,,,,,,,,,,,,,,,CA01 Candidate",
+        "Line B,,,,,,,,,,,,,,Remove this line item,,,,,,,,,,,,,CA01 Candidate",
+        "Line C,,,,,,,,,,,,,,,,,,,,,,,,,,'Line A',IN01 Kept Referenced",
+    ]
+    _write_csv(model_dir / "Line Items.csv", header, rows)
+    return model_dir
+
+
+def test_load_line_items_csv(tmp_path):
+    model_dir = _write_line_items_csv(tmp_path)
+    items = load_line_items_csv(model_dir)
+    assert items[("CA01 Candidate", "Line A")]["referenced_by"] == []
+    assert items[("CA01 Candidate", "Line B")]["notes"] == "Remove this line item"
+    assert items[("IN01 Kept Referenced", "Line C")]["referenced_by"] == ["Line A"]
+
+
+@pytest.mark.parametrize("obj,expected", [
+    ("Data Hub 2.0 / 'SYS 05. Date of Today'.Date MBH Master Data", ("SYS 05. Date of Today", "Date MBH Master Data")),
+    ("'CA01 Candidate'.Line A", ("CA01 Candidate", "Line A")),
+    ("SM 02. General Settings", None),  # whole-module target, no line item
+    ("", None),
+])
+def test_parse_dotted_reference(obj, expected):
+    assert _parse_dotted_reference(obj) == expected
+
+
+def test_load_import_line_item_matches(tmp_path):
+    model_dir = tmp_path / "ImportModel"
+    model_dir.mkdir()
+    header = ";Source Label;Source Object;Source Type;Target Object;Target Type;Production Data"
+    rows = [
+        "Import A;Feed / 'CA01 Candidate'.Line A;SAVED VIEW;SM 02. General Settings;MODULE;FALSE",
+        "Import B;External File;FILE;'IN01 Kept Referenced'.Line C;MODULE;FALSE",
+    ]
+    (model_dir / "Imports.csv").write_text(header + "\n" + "\n".join(rows), encoding="utf-8-sig")
+
+    known_pairs = {("CA01 Candidate", "Line A"), ("IN01 Kept Referenced", "Line C"), ("CA01 Candidate", "Line B")}
+    matched = load_import_line_item_matches(model_dir, known_pairs)
+    assert matched == {("CA01 Candidate", "Line A"), ("IN01 Kept Referenced", "Line C")}
