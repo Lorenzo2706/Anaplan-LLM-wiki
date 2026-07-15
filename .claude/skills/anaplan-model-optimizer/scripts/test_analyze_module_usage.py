@@ -304,3 +304,45 @@ def test_analyze_line_items_inherits_module_delete_functional_area(tmp_path):
     assert entry["inherited_module_delete_flag"] is True
     assert entry["flagged_but_kept"] is True  # KEEP verdict + inherited DELETE marker = contradiction
     assert li_report["summary"]["flagged_but_kept"] == 1
+
+
+from analyze_module_usage import to_markdown_line_items
+
+
+def test_to_markdown_line_items_renders_candidates_and_flagged_but_kept():
+    li_report = {
+        "summary": {"total_line_items_checked": 3, "candidates_for_review": 1, "modules_with_candidates": 1, "flagged_but_kept": 1},
+        "by_module": {
+            "OU01 Active": {
+                "functional_area": "OUTPUT MODULES",
+                "candidates": [{
+                    "module": "OU01 Active", "line_item": "Legacy Aux", "functional_area": "OUTPUT MODULES",
+                    "verdict": LI_CANDIDATE_VERDICT, "referenced_by": [],
+                    "manual_marker": {"flagged": True, "reasons": ["Notes: 'delete'"]},
+                    "inherited_module_delete_flag": False, "flagged_but_kept": False,
+                }],
+                "flagged_but_kept": [{
+                    "module": "OU01 Active", "line_item": "Weird Kept", "functional_area": "OUTPUT MODULES",
+                    "verdict": "KEEP - feeds other line items via formula", "referenced_by": ["x"],
+                    "manual_marker": {"flagged": False, "reasons": []},
+                    "inherited_module_delete_flag": True, "flagged_but_kept": True,
+                }],
+                "total": 3,
+            },
+        },
+    }
+    md = to_markdown_line_items(li_report)
+    assert "## Line item candidates for review" in md
+    assert "Legacy Aux" in md
+    assert "## Line items flagged for deletion but still active or kept" in md
+    assert "Weird Kept" in md
+    assert "inherited module Functional Area=DELETE" in md
+
+
+def test_to_markdown_line_items_handles_no_candidates():
+    li_report = {
+        "summary": {"total_line_items_checked": 1, "candidates_for_review": 0, "modules_with_candidates": 0, "flagged_but_kept": 0},
+        "by_module": {"OU01 Active": {"functional_area": "OUTPUT MODULES", "candidates": [], "flagged_but_kept": [], "total": 1}},
+    }
+    md = to_markdown_line_items(li_report)
+    assert "None found." in md

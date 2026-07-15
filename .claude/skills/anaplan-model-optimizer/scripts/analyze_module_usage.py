@@ -447,6 +447,53 @@ def to_markdown_modules(report: dict, model_name: str) -> str:
     return "\n".join(lines)
 
 
+def to_markdown_line_items(li_report: dict) -> str:
+    s = li_report["summary"]
+    lines = [
+        "# Line item optimization analysis",
+        "",
+        f"- Total line items checked (modules kept/active at module level): {s['total_line_items_checked']}",
+        f"- **Candidates for review: {s['candidates_for_review']}** across {s['modules_with_candidates']} module(s)",
+        f"- Flagged for deletion (Notes/inherited Functional Area) but still active or kept: {s['flagged_but_kept']}",
+        "",
+        "## Line item candidates for review",
+        "",
+    ]
+
+    any_candidates = False
+    for module_name, data in sorted(li_report["by_module"].items()):
+        if not data["candidates"]:
+            continue
+        any_candidates = True
+        lines.append(f"### {module_name} ({data['functional_area']})")
+        lines.append("")
+        lines.append("| Line Item | Flagged for deletion |")
+        lines.append("|---|---|")
+        for e in data["candidates"]:
+            flag = ("Yes - " + "; ".join(e["manual_marker"]["reasons"])) if e["manual_marker"]["flagged"] else (
+                "Yes - inherited module Functional Area=DELETE" if e["inherited_module_delete_flag"] else "")
+            lines.append(f"| {e['line_item']} | {flag} |")
+        lines.append("")
+    if not any_candidates:
+        lines.append("None found.")
+        lines.append("")
+
+    flagged_but_kept = [e for m in li_report["by_module"].values() for e in m["flagged_but_kept"]]
+    if flagged_but_kept:
+        lines.append("## Line items flagged for deletion but still active or kept")
+        lines.append("")
+        lines.append("| Module | Line Item | Verdict | Flag reason |")
+        lines.append("|---|---|---|---|")
+        for e in flagged_but_kept:
+            reasons = list(e["manual_marker"]["reasons"])
+            if e["inherited_module_delete_flag"]:
+                reasons.append("inherited module Functional Area=DELETE")
+            lines.append(f"| {e['module']} | {e['line_item']} | {e['verdict']} | {'; '.join(reasons)} |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--excel", required=True, type=Path)
@@ -457,12 +504,15 @@ def main():
     args = parser.parse_args()
 
     model_name = args.model_name or args.model_dir.name
-    report = analyze(args.excel, args.model_dir)
-    md = to_markdown(report, model_name)
+    module_report, line_item_exposure = analyze(args.excel, args.model_dir)
+    li_report = analyze_line_items(args.model_dir, module_report["modules"], line_item_exposure)
+
+    md = to_markdown_modules(module_report, model_name) + "\n" + to_markdown_line_items(li_report)
+    combined = {"modules": module_report, "line_items": li_report}
 
     if args.out_json:
         args.out_json.parent.mkdir(parents=True, exist_ok=True)
-        args.out_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        args.out_json.write_text(json.dumps(combined, indent=2), encoding="utf-8")
     if args.out_markdown:
         args.out_markdown.parent.mkdir(parents=True, exist_ok=True)
         args.out_markdown.write_text(md, encoding="utf-8")
