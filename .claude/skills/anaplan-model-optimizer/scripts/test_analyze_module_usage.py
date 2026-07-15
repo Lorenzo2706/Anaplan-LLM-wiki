@@ -180,8 +180,8 @@ def test_load_import_line_item_matches(tmp_path):
     model_dir.mkdir()
     header = ";Source Label;Source Object;Source Type;Target Object;Target Type;Production Data"
     rows = [
-        "Import A;Feed / 'CA01 Candidate'.Line A;SAVED VIEW;SM 02. General Settings;MODULE;FALSE",
-        "Import B;External File;FILE;'IN01 Kept Referenced'.Line C;MODULE;FALSE",
+        "Import A;Feed;'CA01 Candidate'.Line A;SAVED VIEW;SM 02. General Settings;MODULE;FALSE",
+        "Import B;External File;FILE;IMPORT;'IN01 Kept Referenced'.Line C;MODULE;FALSE",
     ]
     (model_dir / "Imports.csv").write_text(header + "\n" + "\n".join(rows), encoding="utf-8-sig")
 

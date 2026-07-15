@@ -169,8 +169,8 @@ def load_import_line_item_matches(model_dir: Path, known_pairs: set) -> set:
     rows = _read_csv_rows(model_dir / "Imports.csv")
     matched = set()
     for row in rows:
-        for value in row.values():
-            parsed = _parse_dotted_reference((value or "").strip())
+        for field in ("Source Object", "Target Object"):
+            parsed = _parse_dotted_reference((row.get(field) or "").strip())
             if parsed and parsed in known_pairs:
                 matched.add(parsed)
     return matched
