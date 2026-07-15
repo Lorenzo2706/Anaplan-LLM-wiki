@@ -274,8 +274,15 @@ def _nested(d: dict, *keys, default="") -> str:
     return str(d) if not isinstance(d, dict) else default
 
 
-def table_to_workbook(workbook: Workbook, table: list, name: str):
-    sheet = workbook.create_sheet(_safe_sheet_title(name), 0)
+def table_to_workbook(workbook: Workbook, table: list, name: str, index: int | None = 0):
+    """Write `table` (list of rows, first row = header) as a styled Excel table.
+
+    `index` controls where the sheet is inserted: 0 (default) prepends it — the
+    original behaviour used for the five core sheets; pass index=None to append
+    the sheet at the end of the workbook instead (used for the two extra sheets
+    so the five originals keep their exact position and content).
+    """
+    sheet = workbook.create_sheet(_safe_sheet_title(name), index)
     for row in table:
         sheet.append(row)
 
@@ -711,6 +718,406 @@ def _build_actions_detail_from_download(headers: list, rows: list) -> list:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  Line-item & UI-filter builders (two extra sheets)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _iter_filter_leaves(filter_obj):
+    """Yield every LEAF node inside an axis-filter tree.
+
+    Grid filters live in axisDescriptionQuery.regions.SINGLE.<axis>.filters as a
+    nested BRANCH/LEAF tree: {"rootNode": {"type": "BRANCH", "nodes": [...],
+    "operator": "AND"}}. A LEAF carries a "rule" with "selectedItems" (a
+    coordinate of member/line-item ids), "operator" and "values".
+    """
+    if not isinstance(filter_obj, dict):
+        return
+    stack = [filter_obj]
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        if node.get("type") == "LEAF":
+            yield node
+            continue
+        # BRANCH (or the {"rootNode": {...}} wrapper) — descend
+        if "rootNode" in node:
+            stack.append(node["rootNode"])
+        for child in node.get("nodes", []) or []:
+            stack.append(child)
+
+
+def _grid_widgets_of_page(page_content: dict) -> list:
+    """Flatten a board/grid-page's widgets into a single list.
+
+    BOARD pages nest widgets under rows->columns->widgets; GRID-PAGE pages carry
+    a flat "widgets" list. Returns widget dicts (each with a widgetDefinition).
+    """
+    if not isinstance(page_content, dict):
+        return []
+    widgets = list(page_content.get("widgets", []) or [])
+    for row in page_content.get("rows", []) or []:
+        if not isinstance(row, dict):
+            continue
+        for col in row.get("columns", []) or []:
+            if isinstance(col, dict):
+                widgets += col.get("widgets", []) or []
+    return widgets
+
+
+# Anaplan reserves this fixed entity id for the "Line Items" dimension. When
+# line items are placed on a grid axis, they appear as a dimension with this id
+# whose `shows`/`hides` arrays subset which line items are actually displayed.
+_LINE_ITEMS_DIM_ID = "20000000012"
+
+
+def _axis_dimensions(axis_obj):
+    """Yield the dimension dicts of an axis object ({"dimensions": [...]})."""
+    if isinstance(axis_obj, dict):
+        for d in axis_obj.get("dimensions", []) or []:
+            if isinstance(d, dict):
+                yield d
+
+
+def _iter_region_axis_objs(adq):
+    """Yield (module_id, columns_axis_obj, rows_axis_obj) per data region of a grid.
+
+    An "axis object" is the dict that carries this region's ``dimensions`` and
+    ``filters`` for one axis. Handles the two payload shapes seen in the view
+    edit-mode config:
+
+      A. axisDescriptionQuery.regions.<key> = {moduleId, columns:{…}, rows:{…}}
+         — a single grid with its axes inlined on the region (plain grid).
+      B. axisDescriptionQuery.regions = [ {moduleId, columnAxisKey, rowAxisKey}, … ]
+         with the axis objects living under
+         axisDescriptionQuery.{columnAxis,rowAxis}.childAxes.<key>
+         — split/synced grids and COMBINED grids that share child axes across
+         regions (each nested grid is one region, keyed to its own child axes).
+
+    Only the row and column axes are returned (the grid the user sees); page /
+    off-axis context dimensions are intentionally excluded. This is the single
+    source of truth for "which axes belong to which region", shared by both the
+    line-items builder (reads each axis's dimensions) and the UI-filters builder
+    (reads each axis's filters), so both stay consistent across grid shapes.
+    """
+    if not isinstance(adq, dict):
+        return
+    regions = adq.get("regions", {})
+    if isinstance(regions, list):
+        col_children = (adq.get("columnAxis", {}) or {}).get("childAxes", {}) or {}
+        row_children = (adq.get("rowAxis", {}) or {}).get("childAxes", {}) or {}
+        for region in regions:
+            if not isinstance(region, dict):
+                continue
+            cols = col_children.get(region.get("columnAxisKey"), {}) or {}
+            rows = row_children.get(region.get("rowAxisKey"), {}) or {}
+            yield region.get("moduleId", ""), cols, rows
+    elif isinstance(regions, dict):
+        for region in regions.values():
+            if not isinstance(region, dict):
+                continue
+            yield (region.get("moduleId", ""),
+                   region.get("columns") or {},
+                   region.get("rows") or {})
+
+
+def _iter_region_axes(adq):
+    """Yield (module_id, [row/column dimension dicts]) per data region of a grid.
+
+    Thin wrapper over :func:`_iter_region_axis_objs` that flattens each region's
+    column + row axis objects down to their dimension dicts (the input the
+    line-items resolver expects). Combined/split grids and plain grids are both
+    handled transparently via the shared helper.
+    """
+    for module_id, cols, rows in _iter_region_axis_objs(adq):
+        dims = list(_axis_dimensions(cols)) + list(_axis_dimensions(rows))
+        yield module_id, dims
+
+
+def _shown_line_item_names(dims, module_li_ids: set, id_to_name: dict):
+    """Resolve which line items a grid actually displays, given its axis dims.
+
+    `module_li_ids` / `id_to_name` describe the module's full line item set (ids
+    and id→name, in natural module order). Returns an ordered list of displayed
+    line item names, or ``None`` when line items are NOT explicitly subset on any
+    axis — in which case the caller shows the module's full list (Anaplan
+    semantics: an empty `shows`/`hides` on the Line Items dimension = show all).
+    """
+    for d in dims:
+        shows = [str(x) for x in (d.get("shows") or [])]
+        hides = [str(x) for x in (d.get("hides") or [])]
+        # Identify the Line Items dimension by its reserved id, or (defensively,
+        # for models that ever key it differently) by its shows/hides pointing at
+        # ids that are line items of this module.
+        is_li_dim = str(d.get("id", "")) == _LINE_ITEMS_DIM_ID
+        if not is_li_dim and not ((set(shows) & module_li_ids) or (set(hides) & module_li_ids)):
+            continue
+        if shows:
+            ordered = [id_to_name[sid] for sid in shows if sid in id_to_name]
+            if ordered:
+                return ordered
+            # shows present but none resolve to this module's line items → treat
+            # as unrestricted rather than silently dropping the whole view.
+            return None
+        if hides:
+            hidden = set(hides)
+            return [nm for sid, nm in id_to_name.items() if sid not in hidden]
+        # Line Items dimension on an axis, but no explicit subset → all shown.
+        return None
+    return None
+
+
+def _module_line_item_index(line_items_by_module: dict):
+    """Return (mod_ids, mod_id2name): per module, its line item id-set and an
+    ordered {id: name} map, in natural module order."""
+    mod_ids: dict = {}
+    mod_id2name: dict = {}
+    for mid, items in line_items_by_module.items():
+        ordered = {}
+        for li in items:
+            ordered[str(li.get("id", ""))] = li.get("name", "")
+        mod_id2name[str(mid)] = ordered
+        mod_ids[str(mid)] = set(ordered.keys())
+    return mod_ids, mod_id2name
+
+
+# Widget types that never display line items — skipped by the line-items sheet.
+_NON_DATA_WIDGET_TYPES = {"TEXT", "ACTION", "IMAGE"}
+
+
+def _widget_ux_type(wdef: dict):
+    """Classify a widget into the UX object the user sees, or None if it shows no
+    line items. Distinguishes a plain grid from a combined grid (a grid whose axis
+    query spans more than one data region)."""
+    t = str(wdef.get("type", "")).upper()
+    if t in _NON_DATA_WIDGET_TYPES:
+        return None
+    if t == "FIELD":
+        return "Field"
+    if t == "CARD":
+        return "KPI"
+    if t.endswith("CHART"):
+        return "Chart"
+    if t == "TABLE":
+        region_count = 0
+        for wds in wdef.get("widgetDataSources", []) or []:
+            if not isinstance(wds, dict):
+                continue
+            regions = (wds.get("axisDescriptionQuery") or {}).get("regions")
+            if isinstance(regions, dict):
+                region_count += sum(1 for r in regions.values() if isinstance(r, dict))
+            elif isinstance(regions, list):
+                region_count += sum(1 for r in regions if isinstance(r, dict))
+        return "Combined grid" if region_count > 1 else "Grid"
+    # Unknown but data-bearing widget: treat generically (still surface its LIs).
+    return "Other"
+
+
+def _widget_module_line_items(wdef: dict, mod_ids: dict, mod_id2name: dict):
+    """Yield (module_id, [line item names]) for the line items a single widget
+    actually displays. Handles every UX object:
+
+      * FIELD — the explicit `fields[]` list (each a selected module+line item;
+        can be several); the widget's `axisDescriptionQuery` is empty.
+      * grids / combined grids / charts — line items placed on the row/column
+        axes of `axisDescriptionQuery`, with `shows`/`hides` subsetting applied
+        (via `_iter_region_axes` / `_shown_line_item_names`); charts and combined
+        grids carry the same axis-query shape as a grid.
+      * KPI (CARD) and other single-value widgets with no axis query — the one
+        selected line item carried on the data source as `subEntityId`.
+    """
+    wtype = str(wdef.get("type", "")).upper()
+    if wtype == "FIELD":
+        by_mod: dict = {}
+        order: list = []
+        for f in wdef.get("fields", []) or []:
+            if not isinstance(f, dict):
+                continue
+            m = str(f.get("moduleId", ""))
+            nm = mod_id2name.get(m, {}).get(str(f.get("lineItemId", "")), "")
+            if m not in by_mod:
+                by_mod[m] = []
+                order.append(m)
+            if nm and nm not in by_mod[m]:
+                by_mod[m].append(nm)
+        for m in order:
+            yield m, by_mod[m]
+        return
+
+    for wds in wdef.get("widgetDataSources", []) or []:
+        if not isinstance(wds, dict):
+            continue
+        adq = wds.get("axisDescriptionQuery") or {}
+        regions = adq.get("regions")
+        has_regions = (
+            (isinstance(regions, dict) and any(isinstance(r, dict) for r in regions.values()))
+            or (isinstance(regions, list) and any(isinstance(r, dict) for r in regions))
+        )
+        if has_regions:
+            for module_id, dims in _iter_region_axes(adq):
+                module_id = str(module_id)
+                id2name = mod_id2name.get(module_id, {})
+                shown = _shown_line_item_names(dims, mod_ids.get(module_id, set()), id2name)
+                names = list(id2name.values()) if shown is None else shown
+                yield module_id, names
+        else:
+            # No axis query (KPI/Card, single-field field): the widget's one
+            # selected line item rides on the data source as subEntityId.
+            module_id = str(wds.get("dataSourceId", ""))
+            nm = mod_id2name.get(module_id, {}).get(str(wds.get("subEntityId", "")), "")
+            if nm:
+                yield module_id, [nm]
+
+
+def _build_views_line_items_table(collected_pages: list, views: dict,
+                                  modules: dict, line_items_by_module: dict,
+                                  model_new_url: str, views_table: list) -> list:
+    """One row per (widget occurrence, line item actually displayed by it).
+
+    Widget-driven: walks every board widget (grid, combined grid, field, KPI,
+    chart) and emits the line items that widget genuinely shows — the grid's
+    `shows`/`hides` subset, the field's selected `fields[]`, the KPI's single
+    `subEntityId`, the chart's axis line items — never the module's full list
+    unless the widget truly displays all of it. A "UX Type" column records which
+    kind of object surfaced each line item, so e.g. a KPI and a chart that both
+    show the same line item appear as two distinguishable rows.
+
+    Columns match the "Views Usage Report" (Module/View name, App/Page, URLs and
+    IDs) so the two sheets line up, with "UX Type" + "Line Item" appended. Any
+    view present in the Views Usage Report but not covered by a parsed widget
+    (e.g. a view on a non-board page with no edit-mode payload) is preserved with
+    its full line item list and a blank UX Type, so nothing regresses.
+    """
+    header = ["Module/View name", "App name", "Page name", "View URL",
+              "Page URL", "Module/View ID", "App ID", "Page ID",
+              "UX Type", "Line Item"]
+    out = [header]
+    mod_ids, mod_id2name = _module_line_item_index(line_items_by_module)
+    # module -> a view id (view id == module id in most tenants); used for the
+    # Module/View name + View URL columns of a widget row.
+    mod2view: dict = {}
+    for vid, v in views.items():
+        mod2view.setdefault(str(v.get("module", "")), vid)
+
+    covered: set = set()  # (page_guid, module_id) emitted from a real widget
+
+    for page in collected_pages:
+        for widget in _grid_widgets_of_page(page.get("content", {})):
+            if not isinstance(widget, dict):
+                continue
+            wdef = widget.get("widgetDefinition", {}) or {}
+            ux_type = _widget_ux_type(wdef)
+            if ux_type is None:
+                continue
+            for module_id, names in _widget_module_line_items(wdef, mod_ids, mod_id2name):
+                module_id = str(module_id)
+                if not module_id:
+                    continue
+                covered.add((page["guid"], module_id))
+                view_id = mod2view.get(module_id, module_id)
+                view_name = ((views.get(view_id, {}) or {}).get("name")
+                             or (modules.get(module_id, {}) or {}).get("name")
+                             or module_id)
+                base = [view_name, page["app_name"], page["name"],
+                        f"{model_new_url}/tabs/{view_id}", page["page_url"],
+                        view_id, page["app_guid"], page["guid"], ux_type]
+                if names:
+                    for nm in names:
+                        out.append(base + [nm])
+                else:
+                    out.append(base + [""])
+
+    # Fallback: views in the report with no parsed widget (non-board pages).
+    for row in (views_table[1:] if views_table else []):
+        view_id = row[5] if len(row) > 5 else ""
+        page_guid = row[7] if len(row) > 7 else ""
+        module_id = str(views.get(view_id, {}).get("module", ""))
+        if (page_guid, module_id) in covered:
+            continue
+        covered.add((page_guid, module_id))
+        names = [li.get("name", "") for li in line_items_by_module.get(module_id, [])]
+        base = list(row[:8]) + [""]
+        if names:
+            for nm in names:
+                out.append(base + [nm])
+        else:
+            out.append(base + [""])
+    return out
+
+
+def _build_ui_filters_table(collected_pages: list, modules: dict,
+                            line_item_name_by_id: dict) -> list:
+    """One row per (page, module) grid, reporting its row/column line-item filters.
+
+    `collected_pages` is a list of (page_name, page_content) gathered while
+    scraping each board; page_content is flattened to its widget list here. For
+    every TABLE widget we walk its data regions via `_iter_region_axis_objs`
+    (which resolves both plain single grids AND combined/split grids — the latter
+    keep each nested grid's axes under columnAxis/rowAxis.childAxes), read each
+    region's column/row `filters`, resolve every filter leaf's selectedItems
+    against `line_item_name_by_id` (only the entry that is a real line item
+    resolves), and aggregate per (page, module). A combined grid therefore
+    contributes one filter row per nested grid. The two "Value Filter …" columns
+    are booleans flagging whether that axis has a resolved line-item filter.
+    """
+    header = ["Page", "Module", "Filter Column", "Value Filter Column",
+              "Filter Rows", "Value Filter Rows"]
+    # (page, module) -> {"col": [line item names], "row": [line item names]}
+    agg: dict = {}
+    order: list = []
+
+    for page in collected_pages:
+        page_name = page["name"]
+        page_content = page["content"]
+        for widget in _grid_widgets_of_page(page_content):
+            if not isinstance(widget, dict):
+                continue
+            wdef = widget.get("widgetDefinition", {}) or {}
+            if wdef.get("type") != "TABLE":
+                continue
+            for wds in wdef.get("widgetDataSources", []) or []:
+                if not isinstance(wds, dict):
+                    continue
+                adq = wds.get("axisDescriptionQuery")
+                if not isinstance(adq, dict):
+                    continue
+                # One (module, columns-axis, rows-axis) triple per data region.
+                # Plain grids expose a single region ({"SINGLE": {...}}); combined
+                # and split grids expose a list of regions whose axes live under
+                # columnAxis/rowAxis.childAxes — `_iter_region_axis_objs` resolves
+                # both, so a combined grid yields one entry per nested grid here.
+                for module_id, cols, rows in _iter_region_axis_objs(adq):
+                    module_name = modules.get(module_id, {}).get("name", "") or module_id
+                    key = (page_name, module_name)
+                    if key not in agg:
+                        agg[key] = {"col": [], "row": []}
+                        order.append(key)
+                    slot = agg[key]
+                    for axis_obj, bucket in ((cols, "col"), (rows, "row")):
+                        axis_filters = (axis_obj or {}).get("filters", {})
+                        for leaf in _iter_filter_leaves(axis_filters):
+                            rule = leaf.get("rule", {}) or {}
+                            for sid in rule.get("selectedItems", []) or []:
+                                name = line_item_name_by_id.get(str(sid))
+                                if name and name not in slot[bucket]:
+                                    slot[bucket].append(name)
+
+    out = [header]
+    for key in order:
+        page_name, module_name = key
+        col = agg[key]["col"]
+        row = agg[key]["row"]
+        out.append([
+            page_name,
+            module_name,
+            "; ".join(col),
+            bool(col),
+            "; ".join(row),
+            bool(row),
+        ])
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  Scrapen
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -764,6 +1171,24 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
     modules = {m["id"]: {"name": m["name"], "count": 0} for m in raw_modules}
     print(f"  ✓ {len(raw_modules)} modules found.")
 
+    # ── Line items (for the two extra sheets) ───────────────────────────────────
+    # Official Anaplan API: one record per line item, tagged with its module.
+    try:
+        raw_line_items = api_get(browser, f"{model_api_url}/lineItems").get("items", [])
+    except Exception as e:
+        logging.warning("Could not fetch line items: %s", e)
+        raw_line_items = []
+    line_items_by_module: dict = {}
+    line_item_name_by_id: dict = {}
+    for li in raw_line_items:
+        line_items_by_module.setdefault(str(li.get("moduleId", "")), []).append(li)
+        line_item_name_by_id[str(li.get("id", ""))] = li.get("name", "")
+    print(f"  ✓ {len(raw_line_items)} line items found.")
+
+    # Board contents stashed here (additive) so the two extra sheets can be built
+    # after the loop without re-fetching or disturbing the five core sheets.
+    collected_pages: list = []
+
     # ── Pages ─────────────────────────────────────────────────────────────────
     print("  → Step 3/5: Processing pages, actions and views...")
     pages = api_get(browser, model_pages_url)["items"]
@@ -809,6 +1234,19 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
                     page_name, page_guid, e,
                 )
                 page_content = {}
+
+            # Stash for the two extra sheets (built after the loop). Additive —
+            # does not affect the existing action/view extraction below. Full page
+            # metadata is carried so the line-items sheet can be built widget-driven
+            # (one row per widget × displayed line item) without re-fetching.
+            collected_pages.append({
+                "name":     page_name,
+                "guid":     page_guid,
+                "app_name": app_name,
+                "app_guid": app_guid,
+                "page_url": page_url,
+                "content":  page_content,
+            })
 
             page_actions: set = set()
             if page_type == "BOARD":
@@ -937,6 +1375,25 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
 
     table_to_workbook(workbook, act_detail_table, sheet_label)
 
+    # ── Two extra sheets (appended at the end; five core sheets untouched) ──────
+    # a. "Views Usage Report - Line Items": one row per (widget, line item the
+    #    widget actually displays), across every UX object — grid, combined grid,
+    #    field, KPI, chart — read from the board edit-mode payload. A "UX Type"
+    #    column records which kind of object surfaced each line item.
+    views_li_table = _build_views_line_items_table(
+        collected_pages, views, modules, line_items_by_module,
+        model_new_url, views_table,
+    )
+    table_to_workbook(workbook, views_li_table,
+                      "Views Usage Report - Line Items", index=None)
+
+    # b. "UI Filters": per (page, module) grid, the line items used as row/column
+    #    filters plus a boolean flag for each axis.
+    ui_filters_table = _build_ui_filters_table(
+        collected_pages, modules, line_item_name_by_id,
+    )
+    table_to_workbook(workbook, ui_filters_table, "UI Filters", index=None)
+
     # ── Save ───────────────────────────────────────────────────────────────────
     print("  → Step 5/5: Saving Excel file...")
     safe_model_name = _safe_filename(model_name)
@@ -951,6 +1408,8 @@ def scrape(browser: webdriver.Remote, config: dict, model_id: str, model_name: s
     print(f"    • {len(actions_table) - 1} action links on pages")
     print(f"    • {len(views_table) - 1} view links on pages")
     print(f"    • {len(raw_modules)} modules")
+    print(f"    • {len(views_li_table) - 1} view × line-item rows")
+    print(f"    • {len(ui_filters_table) - 1} page × module filter rows")
     _separator("═")
 
 
