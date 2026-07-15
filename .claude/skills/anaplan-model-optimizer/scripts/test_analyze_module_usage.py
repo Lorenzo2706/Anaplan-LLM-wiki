@@ -223,3 +223,84 @@ def test_load_excel_reads_line_item_exposure_sheets(tmp_path):
 def test_fixed_sheets_includes_new_sheets():
     assert "Views Usage Report - Line Items" in FIXED_SHEETS
     assert "UI Filters" in FIXED_SHEETS
+
+
+from analyze_module_usage import analyze_line_items, LI_CANDIDATE_VERDICT
+
+
+def _fake_module_results():
+    return [
+        {"name": "CA01 Candidate", "functional_area": "CALCULATION MODULES", "verdict": "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found"},
+        {"name": "IN01 Kept Referenced", "functional_area": "INPUT MODULES", "verdict": "KEEP - feeds other modules via formula"},
+        {"name": "OU01 Active", "functional_area": "OUTPUT MODULES", "verdict": "ACTIVE - used in NUX pages/boards"},
+    ]
+
+
+def test_analyze_line_items_scoping_and_verdicts(tmp_path):
+    model_dir = tmp_path / "LiScopeModel"
+    model_dir.mkdir()
+    header = ",Format,Formula,Summary,Applies To,Time Scale,Time Range,Versions,Style,Cell Count,Populated Cell Count,Memory Used,Calculation Complexity,Calculation Effort,Notes,Read Access Driver,Write Access Driver,Users List,Parent,Is Summary,Formula Scope,Code,Use Switchover,Breakback,Start of Section,Data Tags,Referenced By,Module Name"
+    rows = [
+        # In-scope module (OU01 Active is ACTIVE): one exposed, one candidate, one marked candidate.
+        "Revenue,,,,,,,,,,,,,,,,,,,,,,,,,,,OU01 Active",
+        "Unused Aux,,,,,,,,,,,,,,,,,,,,,,,,,,,OU01 Active",
+        "Legacy Aux,,,,,,,,,,,,,,To be deleted,,,,,,,,,,,,,OU01 Active",
+        # In-scope module (IN01 Kept Referenced is KEEP): one referenced-by, one imported.
+        "Referenced Line,,,,,,,,,,,,,,,,,,,,,,,,,,'Revenue',IN01 Kept Referenced",
+        "Imported Line,,,,,,,,,,,,,,,,,,,,,,,,,,,IN01 Kept Referenced",
+        # Out-of-scope module (CA01 Candidate is CANDIDATE at module level) - must be excluded entirely.
+        "Skipped Line,,,,,,,,,,,,,,,,,,,,,,,,,,,CA01 Candidate",
+    ]
+    _write_csv(model_dir / "Line Items.csv", header, rows)
+    (model_dir / "Imports.csv").write_text(
+        ";Source Label;Source Object;Source Type;Target Object;Target Type;Production Data\n"
+        "Import C;Feed;'IN01 Kept Referenced'.Imported Line;SAVED VIEW;SM 02;MODULE;FALSE\n",
+        encoding="utf-8-sig",
+    )
+
+    line_item_exposure = {("OU01 Active", "Revenue")}
+    li_report = analyze_line_items(model_dir, _fake_module_results(), line_item_exposure)
+
+    by_key = {(e["module"], e["line_item"]): e for e in li_report["line_items"]}
+
+    assert ("CA01 Candidate", "Skipped Line") not in by_key  # module was a Pass-1 candidate - excluded
+
+    assert by_key[("OU01 Active", "Revenue")]["verdict"].startswith("ACTIVE")
+    assert by_key[("OU01 Active", "Unused Aux")]["verdict"] == LI_CANDIDATE_VERDICT
+    assert by_key[("OU01 Active", "Legacy Aux")]["verdict"] == LI_CANDIDATE_VERDICT
+    assert by_key[("OU01 Active", "Legacy Aux")]["manual_marker"]["flagged"] is True
+
+    assert by_key[("IN01 Kept Referenced", "Referenced Line")]["verdict"].startswith("KEEP - feeds")
+    assert by_key[("IN01 Kept Referenced", "Imported Line")]["verdict"].startswith("KEEP - used as an import")
+
+    # Marked candidate sorts before the unmarked candidate within the same module.
+    ou01_candidates = li_report["by_module"]["OU01 Active"]["candidates"]
+    names = [e["line_item"] for e in ou01_candidates]
+    assert names.index("Legacy Aux") < names.index("Unused Aux")
+
+    assert li_report["summary"]["candidates_for_review"] == 2
+    assert li_report["summary"]["modules_with_candidates"] == 1
+
+
+def test_analyze_line_items_inherits_module_delete_functional_area(tmp_path):
+    model_dir = tmp_path / "LiInheritModel"
+    model_dir.mkdir()
+    header = ",Format,Formula,Summary,Applies To,Time Scale,Time Range,Versions,Style,Cell Count,Populated Cell Count,Memory Used,Calculation Complexity,Calculation Effort,Notes,Read Access Driver,Write Access Driver,Users List,Parent,Is Summary,Formula Scope,Code,Use Switchover,Breakback,Start of Section,Data Tags,Referenced By,Module Name"
+    # "Some Line" is itself referenced by another line item, so its own
+    # verdict resolves to KEEP (not the candidate verdict) - this is what
+    # lets the inherited module-level DELETE marker register as a genuine
+    # flagged-but-kept contradiction rather than being suppressed by the
+    # "never true for a CANDIDATE verdict" rule.
+    rows = ["Some Line,,,,,,,,,,,,,,,,,,,,,,,,,,'Formula Consumer',DL01 Tagged Delete"]
+    _write_csv(model_dir / "Line Items.csv", header, rows)
+    (model_dir / "Imports.csv").write_text(";Source Label;Source Object;Source Type;Target Object;Target Type;Production Data\n", encoding="utf-8-sig")
+
+    module_results = [
+        {"name": "DL01 Tagged Delete", "functional_area": "DELETE", "verdict": "KEEP - feeds other modules via formula"},
+    ]
+    li_report = analyze_line_items(model_dir, module_results, set())
+
+    entry = li_report["line_items"][0]
+    assert entry["inherited_module_delete_flag"] is True
+    assert entry["flagged_but_kept"] is True  # KEEP verdict + inherited DELETE marker = contradiction
+    assert li_report["summary"]["flagged_but_kept"] == 1

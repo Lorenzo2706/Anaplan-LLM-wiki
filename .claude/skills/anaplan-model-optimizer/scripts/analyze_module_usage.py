@@ -258,6 +258,87 @@ def load_excel(excel_path: Path):
     return ux_counts, action_usage, line_item_exposure
 
 
+LI_CANDIDATE_VERDICT = "CANDIDATE FOR REVIEW - no front-end exposure, no formula reference, no import/export match found"
+
+
+def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure: set) -> dict:
+    """Pass 2: per-line-item verdicts, scoped to modules whose Pass-1 verdict
+    is ACTIVE or KEEP. Line items belonging to a Pass-1 CANDIDATE or DATA
+    MISMATCH module are excluded entirely - deleting the module makes them
+    moot, and listing them separately would just be noise.
+    """
+    in_scope_modules = {
+        e["name"]: e for e in module_results
+        if not e["verdict"].startswith("CANDIDATE") and not e["verdict"].startswith("DATA MISMATCH")
+    }
+
+    line_items = load_line_items_csv(model_dir)
+    known_pairs = set(line_items.keys())
+    import_matches = load_import_line_item_matches(model_dir, known_pairs)
+
+    results = []
+    for (module_name, li_name), meta in line_items.items():
+        module_entry = in_scope_modules.get(module_name)
+        if module_entry is None:
+            continue
+
+        own_marker = detect_manual_marker(meta["notes"])
+        inherited_delete_flag = "delete" in (module_entry["functional_area"] or "").lower()
+
+        exposed = (module_name, li_name) in line_item_exposure
+        referenced = bool(meta["referenced_by"])
+        imported = (module_name, li_name) in import_matches
+
+        if exposed:
+            verdict = "ACTIVE - shown or filtered on in the front end"
+        elif referenced:
+            verdict = "KEEP - feeds other line items via formula"
+        elif imported:
+            verdict = "KEEP - used as an import/export source or target"
+        else:
+            verdict = LI_CANDIDATE_VERDICT
+
+        results.append({
+            "module": module_name,
+            "line_item": li_name,
+            "functional_area": module_entry["functional_area"],
+            "verdict": verdict,
+            "referenced_by": meta["referenced_by"],
+            "manual_marker": own_marker,
+            "inherited_module_delete_flag": inherited_delete_flag,
+            "flagged_but_kept": (own_marker["flagged"] or inherited_delete_flag) and verdict != LI_CANDIDATE_VERDICT,
+        })
+
+    results.sort(key=lambda e: (
+        e["module"],
+        e["verdict"] != LI_CANDIDATE_VERDICT,
+        not (e["manual_marker"]["flagged"] or e["inherited_module_delete_flag"]),
+        e["line_item"],
+    ))
+
+    by_module = {}
+    for e in results:
+        slot = by_module.setdefault(e["module"], {
+            "functional_area": e["functional_area"], "candidates": [], "flagged_but_kept": [], "total": 0,
+        })
+        slot["total"] += 1
+        if e["verdict"] == LI_CANDIDATE_VERDICT:
+            slot["candidates"].append(e)
+        if e["flagged_but_kept"]:
+            slot["flagged_but_kept"].append(e)
+
+    return {
+        "line_items": results,
+        "by_module": by_module,
+        "summary": {
+            "total_line_items_checked": len(results),
+            "candidates_for_review": sum(1 for e in results if e["verdict"] == LI_CANDIDATE_VERDICT),
+            "modules_with_candidates": sum(1 for m in by_module.values() if m["candidates"]),
+            "flagged_but_kept": sum(1 for e in results if e["flagged_but_kept"]),
+        },
+    }
+
+
 def analyze(excel_path: Path, model_dir: Path) -> tuple:
     modules = load_modules_csv(model_dir)
     if not modules:
