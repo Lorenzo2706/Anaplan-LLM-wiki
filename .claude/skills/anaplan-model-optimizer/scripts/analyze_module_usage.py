@@ -29,7 +29,8 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-FIXED_SHEETS = {"All Views", "Actions Usage Report", "Views Usage Report", "Modules Usage Count"}
+FIXED_SHEETS = {"All Views", "Actions Usage Report", "Views Usage Report", "Modules Usage Count",
+                 "Views Usage Report - Line Items", "UI Filters"}
 SECTION_HEADER_PREFIX = "◼"  # "◼️" - pseudo-header rows like "◼️ LOAD MODULES"
 
 # Manual deletion markers: model-owner intent captured in free-text Notes, or
@@ -216,17 +217,54 @@ def load_excel(excel_path: Path):
             file=sys.stderr,
         )
 
+    line_item_exposure = set()
+    if "Views Usage Report - Line Items" in wb.sheetnames:
+        ws = wb["Views Usage Report - Line Items"]
+        rows = list(ws.iter_rows(values_only=True))
+        if rows:
+            header = [str(h) if h is not None else "" for h in rows[0]]
+            idx = {h: i for i, h in enumerate(header)}
+            mod_col, li_col = idx.get("Module/View name"), idx.get("Line Item")
+            if mod_col is not None and li_col is not None:
+                for row in rows[1:]:
+                    if not row:
+                        continue
+                    module_name = str(row[mod_col] or "").strip()
+                    li_name = str(row[li_col] or "").strip()
+                    if module_name and li_name:
+                        line_item_exposure.add((module_name, li_name))
+
+    if "UI Filters" in wb.sheetnames:
+        ws = wb["UI Filters"]
+        rows = list(ws.iter_rows(values_only=True))
+        if rows:
+            header = [str(h) if h is not None else "" for h in rows[0]]
+            idx = {h: i for i, h in enumerate(header)}
+            mod_col = idx.get("Module")
+            filter_cols = [idx[c] for c in ("Filter Column", "Filter Rows") if idx.get(c) is not None]
+            if mod_col is not None:
+                for row in rows[1:]:
+                    if not row:
+                        continue
+                    module_name = str(row[mod_col] or "").strip()
+                    if not module_name:
+                        continue
+                    for col_idx in filter_cols:
+                        raw = str(row[col_idx] or "").strip()
+                        for li_name in [x.strip() for x in raw.split(";") if x.strip()]:
+                            line_item_exposure.add((module_name, li_name))
+
     wb.close()
-    return ux_counts, action_usage
+    return ux_counts, action_usage, line_item_exposure
 
 
-def analyze(excel_path: Path, model_dir: Path) -> dict:
+def analyze(excel_path: Path, model_dir: Path) -> tuple:
     modules = load_modules_csv(model_dir)
     if not modules:
         raise SystemExit(f"No modules found in {model_dir / 'Modules.csv'} - check the path.")
 
     imports_usage = load_imports_csv(model_dir)
-    ux_counts, excel_action_usage = load_excel(excel_path)
+    ux_counts, excel_action_usage, line_item_exposure = load_excel(excel_path)
     used_in_actions_all = imports_usage | excel_action_usage
 
     results = []
@@ -265,7 +303,7 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
         e["functional_area"],
         e["name"],
     ))
-    return {
+    report = {
         "modules": results,
         "summary": {
             "total_modules": len(results),
@@ -276,6 +314,7 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
             "flagged_but_kept": sum(1 for e in results if e["flagged_but_kept"]),
         },
     }
+    return report, line_item_exposure
 
 
 def to_markdown_modules(report: dict, model_name: str) -> str:

@@ -104,7 +104,7 @@ def test_analyze_attaches_marker_and_flagged_but_kept(tmp_path):
         ["OU01 Active", "4", 5],
     ])
 
-    report = analyze(excel_path, model_dir)
+    report, _line_item_exposure = analyze(excel_path, model_dir)
     by_name = {e["name"]: e for e in report["modules"]}
 
     assert by_name["OU01 Active"]["verdict"].startswith("ACTIVE")
@@ -131,7 +131,7 @@ def test_to_markdown_modules_renders_flagged_but_kept_section(tmp_path):
         ["IN01 Kept Referenced", "3", 0],
         ["OU01 Active", "4", 5],
     ])
-    report = analyze(excel_path, model_dir)
+    report, _line_item_exposure = analyze(excel_path, model_dir)
     md = to_markdown_modules(report, "TestModel")
     assert "## Modules flagged for deletion but still active or kept" in md
     assert "IN01 Kept Referenced" in md.split("## Modules flagged for deletion but still active or kept")[1]
@@ -188,3 +188,38 @@ def test_load_import_line_item_matches(tmp_path):
     known_pairs = {("CA01 Candidate", "Line A"), ("IN01 Kept Referenced", "Line C"), ("CA01 Candidate", "Line B")}
     matched = load_import_line_item_matches(model_dir, known_pairs)
     assert matched == {("CA01 Candidate", "Line A"), ("IN01 Kept Referenced", "Line C")}
+
+
+from analyze_module_usage import load_excel, FIXED_SHEETS
+
+
+def test_load_excel_reads_line_item_exposure_sheets(tmp_path):
+    excel_path = tmp_path / "report.xlsx"
+    _write_workbook(excel_path, [["OU01 Active", "1", 5]], extra_sheets={
+        "Views Usage Report - Line Items": [
+            ["Module/View name", "App name", "Page name", "View URL", "Page URL",
+             "Module/View ID", "App ID", "Page ID", "UX Type", "Line Item"],
+            ["OU01 Active", "App", "Page", "url", "url", "1", "a", "p", "GRID", "Revenue"],
+            ["OU01 Active", "App", "Page", "url", "url", "1", "a", "p", "GRID", ""],
+        ],
+        "UI Filters": [
+            ["Page", "Module", "Filter Column", "Value Filter Column", "Filter Rows", "Value Filter Rows"],
+            ["Page", "OU01 Active", "Cost Center; Region", True, "", False],
+        ],
+        "Actions TestModel": [
+            ["Source Label", "Source Object", "Source Type", "Target Object", "Target Type"],
+        ],
+    })
+
+    ux_counts, action_usage, line_item_exposure = load_excel(excel_path)
+
+    assert ("OU01 Active", "Revenue") in line_item_exposure
+    assert ("OU01 Active", "Cost Center") in line_item_exposure
+    assert ("OU01 Active", "Region") in line_item_exposure
+    # Blank Line Item cell must not add a bogus ("OU01 Active", "") entry.
+    assert ("OU01 Active", "") not in line_item_exposure
+
+
+def test_fixed_sheets_includes_new_sheets():
+    assert "Views Usage Report - Line Items" in FIXED_SHEETS
+    assert "UI Filters" in FIXED_SHEETS
