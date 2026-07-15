@@ -89,10 +89,14 @@ def load_modules_csv(model_dir: Path) -> dict:
         stripped = name.lstrip("⠀ \t")
         if not stripped or stripped.startswith(SECTION_HEADER_PREFIX):
             continue
+        functional_area = (row.get("Functional Area") or "").strip()
+        notes = (row.get("Notes") or "").strip()
         modules[name] = {
-            "functional_area": (row.get("Functional Area") or "").strip(),
+            "functional_area": functional_area,
             "referenced_by": _extract_names(row.get("Referenced By", "")),
             "used_in_dashboards_classic": bool((row.get("Used in Dashboards") or "").strip()),
+            "notes": notes,
+            "manual_marker": detect_manual_marker(notes, functional_area),
         }
     return modules
 
@@ -175,6 +179,7 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
             "referenced_by": meta["referenced_by"],
             "used_in_dashboards_classic": meta["used_in_dashboards_classic"],
             "used_in_actions": name in used_in_actions_all,
+            "manual_marker": meta["manual_marker"],
         }
 
         if ux_count is None:
@@ -190,9 +195,16 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
         else:
             entry["verdict"] = "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found"
 
+        entry["flagged_but_kept"] = meta["manual_marker"]["flagged"] and not entry["verdict"].startswith("CANDIDATE") and not entry["verdict"].startswith("DATA MISMATCH")
+
         results.append(entry)
 
-    results.sort(key=lambda e: (e["verdict"] != "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found", e["functional_area"], e["name"]))
+    results.sort(key=lambda e: (
+        e["verdict"] != "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found",
+        not e["manual_marker"]["flagged"],
+        e["functional_area"],
+        e["name"],
+    ))
     return {
         "modules": results,
         "summary": {
@@ -201,11 +213,12 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
             "active_in_ux": sum(1 for e in results if e["verdict"].startswith("ACTIVE")),
             "kept_internal_dependency": sum(1 for e in results if e["verdict"].startswith("KEEP")),
             "data_mismatches": sum(1 for e in results if e["verdict"].startswith("DATA MISMATCH")),
+            "flagged_but_kept": sum(1 for e in results if e["flagged_but_kept"]),
         },
     }
 
 
-def to_markdown(report: dict, model_name: str) -> str:
+def to_markdown_modules(report: dict, model_name: str) -> str:
     s = report["summary"]
     lines = [
         f"# Module optimization analysis - {model_name}",
@@ -215,14 +228,16 @@ def to_markdown(report: dict, model_name: str) -> str:
         f"- Kept (internal dependency - formula/dashboard/action usage): {s['kept_internal_dependency']}",
         f"- **Candidates for review: {s['candidates_for_review']}**",
         f"- Data mismatches (name not found in NUX report): {s['data_mismatches']}",
+        f"- Flagged for deletion (Notes/Functional Area) but still active or kept: {s['flagged_but_kept']}",
         "",
     ]
 
     candidates = [e for e in report["modules"] if e["verdict"].startswith("CANDIDATE")]
     if candidates:
-        lines += ["## Candidates for review", "", "| Module | Functional Area |", "|---|---|"]
+        lines += ["## Candidates for review", "", "| Module | Functional Area | Flagged for deletion |", "|---|---|---|"]
         for e in candidates:
-            lines.append(f"| {e['name']} | {e['functional_area']} |")
+            flag = ("Yes - " + "; ".join(e["manual_marker"]["reasons"])) if e["manual_marker"]["flagged"] else ""
+            lines.append(f"| {e['name']} | {e['functional_area']} | {flag} |")
         lines.append("")
 
     mismatches = [e for e in report["modules"] if e["verdict"].startswith("DATA MISMATCH")]
@@ -239,6 +254,14 @@ def to_markdown(report: dict, model_name: str) -> str:
         for e in kept:
             reason = e["verdict"].split(" - ", 1)[1]
             lines.append(f"| {e['name']} | {e['functional_area']} | {reason} |")
+        lines.append("")
+
+    flagged_but_kept = [e for e in report["modules"] if e["flagged_but_kept"]]
+    if flagged_but_kept:
+        lines += ["## Modules flagged for deletion but still active or kept", "",
+                   "| Module | Functional Area | Verdict | Flag reason |", "|---|---|---|---|"]
+        for e in flagged_but_kept:
+            lines.append(f"| {e['name']} | {e['functional_area']} | {e['verdict']} | {'; '.join(e['manual_marker']['reasons'])} |")
         lines.append("")
 
     return "\n".join(lines)
