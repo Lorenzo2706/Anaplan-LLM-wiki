@@ -1,16 +1,25 @@
 """
 Cross-reference a scraper_ux.py NUX report against a model's raw CSV export
-to find modules that are genuinely unused, as opposed to modules that are
-merely absent from the new-UX pages/boards by design (Data/Load/Calculation
-modules in the DISCO pattern are normal to have zero NUX exposure - they feed
-other modules via formulas instead).
+to find modules - and, for modules that survive that check, individual line
+items - that are genuinely unused, as opposed to ones that are merely absent
+from the new-UX pages/boards by design (Data/Load/Calculation modules in the
+DISCO pattern are normal to have zero NUX exposure - they feed other modules
+via formulas instead).
 
-A module is only reported as a deletion candidate when ALL of these are true:
+Pass 1 (modules): a module is only reported as a deletion candidate when ALL
+of these are true:
   - zero NUX usage (Modules Usage Count sheet == 0)
   - not referenced by any other module's formula (Modules.csv "Referenced By")
   - not used in a classic dashboard (Modules.csv "Used in Dashboards")
   - not the source/target of an import or export (Imports.csv, and the
     Excel's per-model Actions detail sheet)
+
+Pass 2 (line items): scoped to modules whose Pass-1 verdict was ACTIVE or
+KEEP. A line item is a deletion candidate when it has no NUX front-end
+exposure (Views Usage Report - Line Items / UI Filters sheets), no formula
+reference (Line Items.csv "Referenced By"), and no best-effort import/export
+dot-notation match - overlaid with the same manual-deletion-marker
+annotation (Notes/Functional Area) used in Pass 1.
 
 Usage:
     python analyze_module_usage.py --excel "<path to NUX report.xlsx>" \
@@ -29,8 +38,32 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-FIXED_SHEETS = {"All Views", "Actions Usage Report", "Views Usage Report", "Modules Usage Count"}
+FIXED_SHEETS = {"All Views", "Actions Usage Report", "Views Usage Report", "Modules Usage Count",
+                 "Views Usage Report - Line Items", "UI Filters"}
 SECTION_HEADER_PREFIX = "◼"  # "◼️" - pseudo-header rows like "◼️ LOAD MODULES"
+
+# Manual deletion markers: model-owner intent captured in free-text Notes, or
+# (at module level) a Functional Area that itself reads "DELETE". Detection
+# here is purely additive - it must never suppress the reference/front-end
+# safety check, only annotate the result (see analyze() / analyze_line_items()).
+DELETE_MARKER_KEYWORDS = ["delete", "to be deleted", "obsolete", "deprecated", "remove"]
+
+
+def detect_manual_marker(notes: str, functional_area: str = "") -> dict:
+    """Scan Notes/Functional Area for a model-owner deletion marker.
+
+    Returns {"flagged": bool, "reasons": [str, ...]}. Never returns more than
+    one Notes-derived reason and one Functional-Area-derived reason, even if
+    several keywords independently match the same Notes text.
+    """
+    notes_l = (notes or "").lower()
+    matched_keywords = [kw for kw in DELETE_MARKER_KEYWORDS if kw in notes_l]
+    reasons = []
+    if matched_keywords:
+        reasons.append("Notes: " + ", ".join(f"'{kw}'" for kw in matched_keywords))
+    if "delete" in (functional_area or "").lower():
+        reasons.append("Functional Area contains 'DELETE'")
+    return {"flagged": bool(reasons), "reasons": reasons}
 
 
 def _read_csv_rows(path: Path, delimiter_candidates=(",", ";")):
@@ -66,10 +99,14 @@ def load_modules_csv(model_dir: Path) -> dict:
         stripped = name.lstrip("⠀ \t")
         if not stripped or stripped.startswith(SECTION_HEADER_PREFIX):
             continue
+        functional_area = (row.get("Functional Area") or "").strip()
+        notes = (row.get("Notes") or "").strip()
         modules[name] = {
-            "functional_area": (row.get("Functional Area") or "").strip(),
+            "functional_area": functional_area,
             "referenced_by": _extract_names(row.get("Referenced By", "")),
             "used_in_dashboards_classic": bool((row.get("Used in Dashboards") or "").strip()),
+            "notes": notes,
+            "manual_marker": detect_manual_marker(notes, functional_area),
         }
     return modules
 
@@ -87,6 +124,66 @@ def load_imports_csv(model_dir: Path) -> set:
             if src:
                 used.add(src)
     return used
+
+
+def load_line_items_csv(model_dir: Path) -> dict:
+    """Load Line Items.csv keyed by (module_name, line_item_name).
+
+    Line Items.csv carries its own per-line-item "Referenced By" and "Notes"
+    columns - unlike Modules.csv's aggregate signals, these are already at
+    the exact grain Pass 2 needs, no extraction/aggregation required.
+    """
+    rows = _read_csv_rows(model_dir / "Line Items.csv")
+    items = {}
+    for row in rows:
+        name = (row.get("") or "").strip()
+        module_name = (row.get("Module Name") or "").strip()
+        if not name or not module_name:
+            continue
+        items[(module_name, name)] = {
+            "notes": (row.get("Notes") or "").strip(),
+            "referenced_by": _extract_names(row.get("Referenced By", "")),
+        }
+    return items
+
+
+_DOTTED_REFERENCE_RE = re.compile(r"'([^']+)'\.(.+)$")
+
+
+def _parse_dotted_reference(obj: str):
+    """Extract (module_name, line_item_name) from an Imports.csv Source/Target
+    Object string's final path segment, e.g.
+    "Data Hub 2.0 / 'SYS 05. Date of Today'.Date MBH Master Data" ->
+    ("SYS 05. Date of Today", "Date MBH Master Data"). Module names routinely
+    contain periods (e.g. "SYS 05."), which is why only the quoted-module
+    pattern is trusted - a whole-module reference like "SM 02. General
+    Settings" has no quotes and correctly returns None.
+    """
+    if not obj:
+        return None
+    last_segment = obj.split(" / ")[-1].strip()
+    match = _DOTTED_REFERENCE_RE.search(last_segment)
+    if not match:
+        return None
+    return match.group(1).strip(), match.group(2).strip()
+
+
+def load_import_line_item_matches(model_dir: Path, known_pairs: set) -> set:
+    """Best-effort: which (module, line item) pairs already known from
+    Line Items.csv are named via dot-notation in Imports.csv Source/Target
+    Object. Only ever returns a subset of known_pairs - never invents a pair
+    that isn't already in this model's own Line Items.csv (which would
+    happen if a dot-notation reference happened to resolve to a different
+    model's module/line item of the same name).
+    """
+    rows = _read_csv_rows(model_dir / "Imports.csv")
+    matched = set()
+    for row in rows:
+        for field in ("Source Object", "Target Object"):
+            parsed = _parse_dotted_reference((row.get(field) or "").strip())
+            if parsed and parsed in known_pairs:
+                matched.add(parsed)
+    return matched
 
 
 def load_excel(excel_path: Path):
@@ -129,17 +226,149 @@ def load_excel(excel_path: Path):
             file=sys.stderr,
         )
 
+    line_item_exposure = set()
+    if "Views Usage Report - Line Items" in wb.sheetnames:
+        ws = wb["Views Usage Report - Line Items"]
+        rows = list(ws.iter_rows(values_only=True))
+        if rows:
+            header = [str(h) if h is not None else "" for h in rows[0]]
+            idx = {h: i for i, h in enumerate(header)}
+            mod_col, li_col = idx.get("Module/View name"), idx.get("Line Item")
+            if mod_col is not None and li_col is not None:
+                for row in rows[1:]:
+                    if not row:
+                        continue
+                    module_name = str(row[mod_col] or "").strip()
+                    li_name = str(row[li_col] or "").strip()
+                    if module_name and li_name:
+                        line_item_exposure.add((module_name, li_name))
+
+    if "UI Filters" in wb.sheetnames:
+        ws = wb["UI Filters"]
+        rows = list(ws.iter_rows(values_only=True))
+        if rows:
+            header = [str(h) if h is not None else "" for h in rows[0]]
+            idx = {h: i for i, h in enumerate(header)}
+            mod_col = idx.get("Module")
+            filter_cols = [idx[c] for c in ("Filter Column", "Filter Rows") if idx.get(c) is not None]
+            if mod_col is not None:
+                for row in rows[1:]:
+                    if not row:
+                        continue
+                    module_name = str(row[mod_col] or "").strip()
+                    if not module_name:
+                        continue
+                    for col_idx in filter_cols:
+                        raw = str(row[col_idx] or "").strip()
+                        for li_name in [x.strip() for x in raw.split(";") if x.strip()]:
+                            line_item_exposure.add((module_name, li_name))
+
     wb.close()
-    return ux_counts, action_usage
+    return ux_counts, action_usage, line_item_exposure
 
 
-def analyze(excel_path: Path, model_dir: Path) -> dict:
+LI_CANDIDATE_VERDICT = "CANDIDATE FOR REVIEW - no front-end exposure, no formula reference, no import/export match found"
+
+
+def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure: set) -> dict:
+    """Pass 2: per-line-item verdicts, scoped to modules whose Pass-1 verdict
+    is ACTIVE or KEEP. Line items belonging to a Pass-1 CANDIDATE or DATA
+    MISMATCH module are excluded entirely - deleting the module makes them
+    moot, and listing them separately would just be noise.
+    """
+    in_scope_modules = {
+        e["name"]: e for e in module_results
+        if not e["verdict"].startswith("CANDIDATE") and not e["verdict"].startswith("DATA MISMATCH")
+    }
+
+    line_items = load_line_items_csv(model_dir)
+    known_pairs = set(line_items.keys())
+    import_matches = load_import_line_item_matches(model_dir, known_pairs)
+
+    # Data-quality note: a Module/View name that appears in the NUX report's
+    # front-end exposure sheets (Views Usage Report - Line Items / UI
+    # Filters) but doesn't match any known module name in this model's own
+    # CSV export - typically because the view was renamed since the last
+    # scrape. Flagging this separately means we neither silently drop that
+    # row's exposure signal nor misreport it as a mismatch on every line item
+    # inside it (there is no line-item-level DATA MISMATCH verdict - see the
+    # design spec).
+    known_module_names = {e["name"] for e in module_results}
+    exposure_module_names = {name for (name, _li) in line_item_exposure}
+    unresolved_view_names = sorted(exposure_module_names - known_module_names)
+
+    results = []
+    for (module_name, li_name), meta in line_items.items():
+        module_entry = in_scope_modules.get(module_name)
+        if module_entry is None:
+            continue
+
+        own_marker = detect_manual_marker(meta["notes"])
+        inherited_delete_flag = "delete" in (module_entry["functional_area"] or "").lower()
+
+        exposed = (module_name, li_name) in line_item_exposure
+        referenced = bool(meta["referenced_by"])
+        imported = (module_name, li_name) in import_matches
+
+        if exposed:
+            verdict = "ACTIVE - shown or filtered on in the front end"
+        elif referenced:
+            verdict = "KEEP - feeds other line items via formula"
+        elif imported:
+            verdict = "KEEP - used as an import/export source or target"
+        else:
+            verdict = LI_CANDIDATE_VERDICT
+
+        results.append({
+            "module": module_name,
+            "line_item": li_name,
+            "functional_area": module_entry["functional_area"],
+            "verdict": verdict,
+            "referenced_by": meta["referenced_by"],
+            "manual_marker": own_marker,
+            "inherited_module_delete_flag": inherited_delete_flag,
+            "flagged_but_kept": (own_marker["flagged"] or inherited_delete_flag) and verdict != LI_CANDIDATE_VERDICT,
+        })
+
+    results.sort(key=lambda e: (
+        e["module"],
+        e["verdict"] != LI_CANDIDATE_VERDICT,
+        not (e["manual_marker"]["flagged"] or e["inherited_module_delete_flag"]),
+        e["line_item"],
+    ))
+
+    by_module = {}
+    for e in results:
+        slot = by_module.setdefault(e["module"], {
+            "functional_area": e["functional_area"], "candidates": [], "flagged_but_kept": [], "total": 0,
+        })
+        slot["total"] += 1
+        if e["verdict"] == LI_CANDIDATE_VERDICT:
+            slot["candidates"].append(e)
+        if e["flagged_but_kept"]:
+            slot["flagged_but_kept"].append(e)
+
+    return {
+        "line_items": results,
+        "by_module": by_module,
+        "unresolved_view_names": unresolved_view_names,
+        "summary": {
+            "total_line_items_checked": len(results),
+            "candidates_for_review": sum(1 for e in results if e["verdict"] == LI_CANDIDATE_VERDICT),
+            "modules_with_candidates": sum(1 for m in by_module.values() if m["candidates"]),
+            "flagged_but_kept": sum(1 for e in results if e["flagged_but_kept"]),
+            "unresolved_view_names": len(unresolved_view_names),
+        },
+    }
+
+
+def analyze(excel_path: Path, model_dir: Path) -> tuple:
     modules = load_modules_csv(model_dir)
     if not modules:
         raise SystemExit(f"No modules found in {model_dir / 'Modules.csv'} - check the path.")
 
     imports_usage = load_imports_csv(model_dir)
-    ux_counts, excel_action_usage = load_excel(excel_path)
+    ux_counts, excel_action_usage, line_item_exposure = load_excel(excel_path)
     used_in_actions_all = imports_usage | excel_action_usage
 
     results = []
@@ -152,6 +381,7 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
             "referenced_by": meta["referenced_by"],
             "used_in_dashboards_classic": meta["used_in_dashboards_classic"],
             "used_in_actions": name in used_in_actions_all,
+            "manual_marker": meta["manual_marker"],
         }
 
         if ux_count is None:
@@ -167,10 +397,17 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
         else:
             entry["verdict"] = "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found"
 
+        entry["flagged_but_kept"] = meta["manual_marker"]["flagged"] and not entry["verdict"].startswith("CANDIDATE") and not entry["verdict"].startswith("DATA MISMATCH")
+
         results.append(entry)
 
-    results.sort(key=lambda e: (e["verdict"] != "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found", e["functional_area"], e["name"]))
-    return {
+    results.sort(key=lambda e: (
+        e["verdict"] != "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found",
+        not e["manual_marker"]["flagged"],
+        e["functional_area"],
+        e["name"],
+    ))
+    report = {
         "modules": results,
         "summary": {
             "total_modules": len(results),
@@ -178,11 +415,13 @@ def analyze(excel_path: Path, model_dir: Path) -> dict:
             "active_in_ux": sum(1 for e in results if e["verdict"].startswith("ACTIVE")),
             "kept_internal_dependency": sum(1 for e in results if e["verdict"].startswith("KEEP")),
             "data_mismatches": sum(1 for e in results if e["verdict"].startswith("DATA MISMATCH")),
+            "flagged_but_kept": sum(1 for e in results if e["flagged_but_kept"]),
         },
     }
+    return report, line_item_exposure
 
 
-def to_markdown(report: dict, model_name: str) -> str:
+def to_markdown_modules(report: dict, model_name: str) -> str:
     s = report["summary"]
     lines = [
         f"# Module optimization analysis - {model_name}",
@@ -192,14 +431,16 @@ def to_markdown(report: dict, model_name: str) -> str:
         f"- Kept (internal dependency - formula/dashboard/action usage): {s['kept_internal_dependency']}",
         f"- **Candidates for review: {s['candidates_for_review']}**",
         f"- Data mismatches (name not found in NUX report): {s['data_mismatches']}",
+        f"- Flagged for deletion (Notes/Functional Area) but still active or kept: {s['flagged_but_kept']}",
         "",
     ]
 
     candidates = [e for e in report["modules"] if e["verdict"].startswith("CANDIDATE")]
     if candidates:
-        lines += ["## Candidates for review", "", "| Module | Functional Area |", "|---|---|"]
+        lines += ["## Candidates for review", "", "| Module | Functional Area | Flagged for deletion |", "|---|---|---|"]
         for e in candidates:
-            lines.append(f"| {e['name']} | {e['functional_area']} |")
+            flag = ("Yes - " + "; ".join(e["manual_marker"]["reasons"])) if e["manual_marker"]["flagged"] else ""
+            lines.append(f"| {e['name']} | {e['functional_area']} | {flag} |")
         lines.append("")
 
     mismatches = [e for e in report["modules"] if e["verdict"].startswith("DATA MISMATCH")]
@@ -218,6 +459,77 @@ def to_markdown(report: dict, model_name: str) -> str:
             lines.append(f"| {e['name']} | {e['functional_area']} | {reason} |")
         lines.append("")
 
+    flagged_but_kept = [e for e in report["modules"] if e["flagged_but_kept"]]
+    if flagged_but_kept:
+        lines += ["## Modules flagged for deletion but still active or kept", "",
+                   "| Module | Functional Area | Verdict | Flag reason |", "|---|---|---|---|"]
+        for e in flagged_but_kept:
+            lines.append(f"| {e['name']} | {e['functional_area']} | {e['verdict']} | {'; '.join(e['manual_marker']['reasons'])} |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def to_markdown_line_items(li_report: dict) -> str:
+    s = li_report["summary"]
+    lines = [
+        "# Line item optimization analysis",
+        "",
+        f"- Total line items checked (modules kept/active at module level): {s['total_line_items_checked']}",
+        f"- **Candidates for review: {s['candidates_for_review']}** across {s['modules_with_candidates']} module(s)",
+        f"- Flagged for deletion (Notes/inherited Functional Area) but still active or kept: {s['flagged_but_kept']}",
+        f"- Unresolved view/module names in the NUX report: {s['unresolved_view_names']}",
+        "",
+        "## Line item candidates for review",
+        "",
+    ]
+
+    any_candidates = False
+    for module_name, data in sorted(li_report["by_module"].items()):
+        if not data["candidates"]:
+            continue
+        any_candidates = True
+        lines.append(f"### {module_name} ({data['functional_area']})")
+        lines.append("")
+        lines.append("| Line Item | Flagged for deletion |")
+        lines.append("|---|---|")
+        for e in data["candidates"]:
+            flag = ("Yes - " + "; ".join(e["manual_marker"]["reasons"])) if e["manual_marker"]["flagged"] else (
+                "Yes - inherited module Functional Area=DELETE" if e["inherited_module_delete_flag"] else "")
+            lines.append(f"| {e['line_item']} | {flag} |")
+        lines.append("")
+    if not any_candidates:
+        lines.append("None found.")
+        lines.append("")
+
+    unresolved_view_names = li_report.get("unresolved_view_names", [])
+    if unresolved_view_names:
+        lines.append("## Data quality: unresolved view/module names")
+        lines.append("")
+        lines.append(
+            "These names appeared in the NUX report's front-end exposure sheets but don't "
+            "match any known module name in this model's CSV export - the view may have been "
+            "renamed since the last scrape, so their exposure signal could not be matched to "
+            "any line item. This is a data-quality flag, not a deletion signal."
+        )
+        lines.append("")
+        for name in unresolved_view_names:
+            lines.append(f"- {name}")
+        lines.append("")
+
+    flagged_but_kept = [e for m in li_report["by_module"].values() for e in m["flagged_but_kept"]]
+    if flagged_but_kept:
+        lines.append("## Line items flagged for deletion but still active or kept")
+        lines.append("")
+        lines.append("| Module | Line Item | Verdict | Flag reason |")
+        lines.append("|---|---|---|---|")
+        for e in flagged_but_kept:
+            reasons = list(e["manual_marker"]["reasons"])
+            if e["inherited_module_delete_flag"]:
+                reasons.append("inherited module Functional Area=DELETE")
+            lines.append(f"| {e['module']} | {e['line_item']} | {e['verdict']} | {'; '.join(reasons)} |")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -231,12 +543,15 @@ def main():
     args = parser.parse_args()
 
     model_name = args.model_name or args.model_dir.name
-    report = analyze(args.excel, args.model_dir)
-    md = to_markdown(report, model_name)
+    module_report, line_item_exposure = analyze(args.excel, args.model_dir)
+    li_report = analyze_line_items(args.model_dir, module_report["modules"], line_item_exposure)
+
+    md = to_markdown_modules(module_report, model_name) + "\n" + to_markdown_line_items(li_report)
+    combined = {"modules": module_report, "line_items": li_report}
 
     if args.out_json:
         args.out_json.parent.mkdir(parents=True, exist_ok=True)
-        args.out_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        args.out_json.write_text(json.dumps(combined, indent=2), encoding="utf-8")
     if args.out_markdown:
         args.out_markdown.parent.mkdir(parents=True, exist_ok=True)
         args.out_markdown.write_text(md, encoding="utf-8")

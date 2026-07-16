@@ -1,19 +1,26 @@
 ---
 name: anaplan-model-optimizer
 description: >
-  Analyze a production Anaplan model end-to-end to find modules that are safe to
-  delete. Runs scraper_ux.py to pull a fresh new-UX (NUX) usage export for the
-  chosen model, then cross-references it against the model's raw CSV export
-  (cross-module formula references, import/export targets, classic dashboard
-  usage) so it never flags Data/Load/Calculation modules that are intentionally
-  invisible in the UX but still feed other modules. Reports genuine dead-module
-  candidates in chat. Use this skill whenever the user asks to optimize, clean
-  up, shrink, or reduce the size/complexity of an Anaplan model, asks which
-  modules are unused/orphaned/dead/safe to delete, mentions running the NUX/UX
-  scraper or scraper_ux.py, or wants a "model health check" or "model
-  housekeeping" pass. Always prefer this skill over eyeballing the Excel
-  output manually - the cross-referencing against Modules.csv and Imports.csv
-  is what prevents false positives on load-bearing backend modules.
+  Analyze a production Anaplan model end-to-end to find modules AND line
+  items that are safe to delete. Runs scraper_ux.py to pull a fresh new-UX
+  (NUX) usage export for the chosen model - including the widget- and
+  filter-level line item exposure sheets - then cross-references it against
+  the model's raw CSV export (cross-module formula references, import/export
+  targets, classic dashboard usage) so it never flags Data/Load/Calculation
+  modules that are intentionally invisible in the UX but still feed other
+  modules, and never flags a line item that's still referenced, imported, or
+  shown/filtered on anywhere in the front end. Also surfaces a model owner's
+  own deletion intent (Notes text, Functional Area=DELETE) as an annotation,
+  including cases where something was marked for deletion but never actually
+  cleaned up. Reports module candidates first, then line-item candidates
+  within the surviving modules. Use this skill whenever the user asks to
+  optimize, clean up, shrink, or reduce the size/complexity of an Anaplan
+  model, asks which modules or line items are unused/orphaned/dead/safe to
+  delete, mentions running the NUX/UX scraper or scraper_ux.py, or wants a
+  "model health check" or "model housekeeping" pass. Always prefer this
+  skill over eyeballing the Excel output manually - the cross-referencing
+  against Modules.csv, Line Items.csv, and Imports.csv is what prevents
+  false positives on load-bearing backend modules and line items.
 ---
 
 # Anaplan Model Optimizer
@@ -145,9 +152,11 @@ python .claude/skills/anaplan-model-optimizer/scripts/analyze_module_usage.py \
 ```
 
 This does the actual cross-referencing in code rather than by reading the
-spreadsheet by eye, because the safety logic (don't flag a module that's
-referenced elsewhere) needs to be exact, not approximate. For each module it
-checks, in order:
+spreadsheet by eye, because the safety logic (don't flag something that's
+referenced elsewhere) needs to be exact, not approximate. It runs two
+passes and writes one combined report:
+
+**Pass 1 - modules.** For each module, in order:
 
 1. NUX usage count > 0 → **active**, definitely keep
 2. Referenced by another module's formula (`Modules.csv` "Referenced By") →
@@ -162,26 +171,59 @@ report doesn't mention at all (name mismatch, or the export predates a rename)
 - treat those as a data-quality flag, not a deletion candidate, and ask the
 user to double check the name.
 
+**Pass 2 - line items.** Runs only inside modules that survived Pass 1
+(verdict `ACTIVE` or `KEEP` - a module already flagged as a deletion
+candidate makes its line items moot, so they're skipped). For each line
+item in an in-scope module, in order:
+
+1. Shown in a widget or used as a filter, per the NUX report's
+   `Views Usage Report - Line Items` and `UI Filters` sheets → **active**
+2. Referenced by another line item's formula (`Line Items.csv` "Referenced
+   By") → **keep**
+3. Named via dot-notation in an `Imports.csv` Source/Target Object
+   (best-effort text parse - may find nothing on models with no internal
+   cross-module imports, that's expected, not a bug) → **keep**
+4. None of the above → **candidate for review**
+
+**Manual deletion markers (both passes).** Independently of the above, each
+module and line item is checked for a model-owner deletion marker: `Notes`
+containing `delete`, `to be deleted`, `obsolete`, `deprecated`, or `remove`
+(case-insensitive), or (module-level, inherited by its line items) a
+`Functional Area` containing `DELETE`. This never overrides the checks
+above - it only annotates: a computed candidate with a marker present is
+the highest-confidence recommendation, while a marker present on something
+computed as `ACTIVE`/`KEEP` is surfaced separately as a contradiction worth
+investigating (deletion was intended but never finished, or the item turned
+out to still be load-bearing).
+
 Per the project's `raw/` conventions, never edit the CSVs or the xlsx - this
 script only reads them.
 
 ## Step 5 - Report in chat
 
 Present the results directly in the conversation, not just a pointer to the
-saved file:
+saved file. Modules first, then line items:
 
-- Lead with the candidate-for-review table (module name + functional area).
-  Frame it as *"these look safe to review for deletion"*, not *"delete these"*
-  - text-based reference parsing can miss dynamic references (e.g. `SELECT`
-    on a computed string), so recommend the user do a final native check in
-    Anaplan (e.g. the module's dependency/blueprint view) before deleting
-    anything.
-  - Group by functional area if there are more than a handful, so the user can
-    see whether a whole retired workstream can go at once.
-- Briefly show the "kept despite zero NUX usage" table too, with the reason -
-  this is what lets the user trust the candidate list instead of wondering
+- Lead with the module candidate-for-review table (module name + functional
+  area + any deletion-marker flag). Frame it as *"these look safe to review
+  for deletion"*, not *"delete these"* - text-based reference parsing can
+  miss dynamic references (e.g. `SELECT` on a computed string), so recommend
+  the user do a final native check in Anaplan (e.g. the module's
+  dependency/blueprint view) before deleting anything. Group by functional
+  area if there are more than a handful.
+- Briefly show the "kept despite zero NUX usage" table too, with the reason
+  - this is what lets the user trust the candidate list instead of wondering
   whether the analysis just missed something.
+- Then present line-item candidates, grouped by the module they live in
+  (module name + functional area + candidate line item names) - only for
+  modules that survived Pass 1 and have at least one candidate line item.
+  Mention the total count of modules checked with zero line-item candidates
+  without listing them individually.
+- Show both "flagged for deletion but still active or kept" tables (modules,
+  then line items) if either is non-empty - these are model-owner-marked
+  items that turned out to still be wired in, worth flagging as a cleanup
+  gap even though this skill won't recommend deleting them outright.
 - Mention the full report was saved under `analyses/` per this project's
   convention for non-wiki outputs.
 - This skill only recommends. Never delete anything - the user removes
-  modules from the model themselves in Anaplan.
+  modules or line items from the model themselves in Anaplan.
