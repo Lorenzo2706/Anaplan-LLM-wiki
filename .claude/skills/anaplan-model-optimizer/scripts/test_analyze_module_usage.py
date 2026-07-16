@@ -311,7 +311,8 @@ from analyze_module_usage import to_markdown_line_items
 
 def test_to_markdown_line_items_renders_candidates_and_flagged_but_kept():
     li_report = {
-        "summary": {"total_line_items_checked": 3, "candidates_for_review": 1, "modules_with_candidates": 1, "flagged_but_kept": 1},
+        "summary": {"total_line_items_checked": 3, "candidates_for_review": 1, "modules_with_candidates": 1, "flagged_but_kept": 1, "unresolved_view_names": 0},
+        "unresolved_view_names": [],
         "by_module": {
             "OU01 Active": {
                 "functional_area": "OUTPUT MODULES",
@@ -341,8 +342,61 @@ def test_to_markdown_line_items_renders_candidates_and_flagged_but_kept():
 
 def test_to_markdown_line_items_handles_no_candidates():
     li_report = {
-        "summary": {"total_line_items_checked": 1, "candidates_for_review": 0, "modules_with_candidates": 0, "flagged_but_kept": 0},
+        "summary": {"total_line_items_checked": 1, "candidates_for_review": 0, "modules_with_candidates": 0, "flagged_but_kept": 0, "unresolved_view_names": 0},
+        "unresolved_view_names": [],
         "by_module": {"OU01 Active": {"functional_area": "OUTPUT MODULES", "candidates": [], "flagged_but_kept": [], "total": 1}},
     }
     md = to_markdown_line_items(li_report)
     assert "None found." in md
+    assert "Data quality: unresolved view/module names" not in md
+
+
+def test_analyze_line_items_no_unresolved_view_names_when_all_match(tmp_path):
+    """line_item_exposure only references module names that exist in
+    module_results - unresolved_view_names must be empty and the markdown
+    data-quality section must not render."""
+    model_dir = tmp_path / "LiResolvedModel"
+    model_dir.mkdir()
+    header = ",Format,Formula,Summary,Applies To,Time Scale,Time Range,Versions,Style,Cell Count,Populated Cell Count,Memory Used,Calculation Complexity,Calculation Effort,Notes,Read Access Driver,Write Access Driver,Users List,Parent,Is Summary,Formula Scope,Code,Use Switchover,Breakback,Start of Section,Data Tags,Referenced By,Module Name"
+    rows = ["Revenue,,,,,,,,,,,,,,,,,,,,,,,,,,,OU01 Active"]
+    _write_csv(model_dir / "Line Items.csv", header, rows)
+    (model_dir / "Imports.csv").write_text(
+        ";Source Label;Source Object;Source Type;Target Object;Target Type;Production Data\n",
+        encoding="utf-8-sig",
+    )
+
+    line_item_exposure = {("OU01 Active", "Revenue")}
+    li_report = analyze_line_items(model_dir, _fake_module_results(), line_item_exposure)
+
+    assert li_report["unresolved_view_names"] == []
+    assert li_report["summary"]["unresolved_view_names"] == 0
+
+    md = to_markdown_line_items(li_report)
+    assert "Data quality: unresolved view/module names" not in md
+
+
+def test_analyze_line_items_flags_unresolved_view_names(tmp_path):
+    """line_item_exposure references a Module/View name absent from
+    module_results (e.g. a view renamed since the last scrape) -
+    unresolved_view_names must capture it, and the markdown data-quality
+    section must render with that name as a bullet."""
+    model_dir = tmp_path / "LiUnresolvedModel"
+    model_dir.mkdir()
+    header = ",Format,Formula,Summary,Applies To,Time Scale,Time Range,Versions,Style,Cell Count,Populated Cell Count,Memory Used,Calculation Complexity,Calculation Effort,Notes,Read Access Driver,Write Access Driver,Users List,Parent,Is Summary,Formula Scope,Code,Use Switchover,Breakback,Start of Section,Data Tags,Referenced By,Module Name"
+    rows = ["Revenue,,,,,,,,,,,,,,,,,,,,,,,,,,,OU01 Active"]
+    _write_csv(model_dir / "Line Items.csv", header, rows)
+    (model_dir / "Imports.csv").write_text(
+        ";Source Label;Source Object;Source Type;Target Object;Target Type;Production Data\n",
+        encoding="utf-8-sig",
+    )
+
+    # "OU01 Renamed View" does not match any name in _fake_module_results().
+    line_item_exposure = {("OU01 Active", "Revenue"), ("OU01 Renamed View", "Some Line")}
+    li_report = analyze_line_items(model_dir, _fake_module_results(), line_item_exposure)
+
+    assert li_report["unresolved_view_names"] == ["OU01 Renamed View"]
+    assert li_report["summary"]["unresolved_view_names"] == 1
+
+    md = to_markdown_line_items(li_report)
+    assert "## Data quality: unresolved view/module names" in md
+    assert "- OU01 Renamed View" in md

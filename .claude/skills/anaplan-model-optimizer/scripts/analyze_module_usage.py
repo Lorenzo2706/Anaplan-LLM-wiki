@@ -1,16 +1,25 @@
 """
 Cross-reference a scraper_ux.py NUX report against a model's raw CSV export
-to find modules that are genuinely unused, as opposed to modules that are
-merely absent from the new-UX pages/boards by design (Data/Load/Calculation
-modules in the DISCO pattern are normal to have zero NUX exposure - they feed
-other modules via formulas instead).
+to find modules - and, for modules that survive that check, individual line
+items - that are genuinely unused, as opposed to ones that are merely absent
+from the new-UX pages/boards by design (Data/Load/Calculation modules in the
+DISCO pattern are normal to have zero NUX exposure - they feed other modules
+via formulas instead).
 
-A module is only reported as a deletion candidate when ALL of these are true:
+Pass 1 (modules): a module is only reported as a deletion candidate when ALL
+of these are true:
   - zero NUX usage (Modules Usage Count sheet == 0)
   - not referenced by any other module's formula (Modules.csv "Referenced By")
   - not used in a classic dashboard (Modules.csv "Used in Dashboards")
   - not the source/target of an import or export (Imports.csv, and the
     Excel's per-model Actions detail sheet)
+
+Pass 2 (line items): scoped to modules whose Pass-1 verdict was ACTIVE or
+KEEP. A line item is a deletion candidate when it has no NUX front-end
+exposure (Views Usage Report - Line Items / UI Filters sheets), no formula
+reference (Line Items.csv "Referenced By"), and no best-effort import/export
+dot-notation match - overlaid with the same manual-deletion-marker
+annotation (Notes/Functional Area) used in Pass 1.
 
 Usage:
     python analyze_module_usage.py --excel "<path to NUX report.xlsx>" \
@@ -276,6 +285,18 @@ def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure
     known_pairs = set(line_items.keys())
     import_matches = load_import_line_item_matches(model_dir, known_pairs)
 
+    # Data-quality note: a Module/View name that appears in the NUX report's
+    # front-end exposure sheets (Views Usage Report - Line Items / UI
+    # Filters) but doesn't match any known module name in this model's own
+    # CSV export - typically because the view was renamed since the last
+    # scrape. Flagging this separately means we neither silently drop that
+    # row's exposure signal nor misreport it as a mismatch on every line item
+    # inside it (there is no line-item-level DATA MISMATCH verdict - see the
+    # design spec).
+    known_module_names = {e["name"] for e in module_results}
+    exposure_module_names = {name for (name, _li) in line_item_exposure}
+    unresolved_view_names = sorted(exposure_module_names - known_module_names)
+
     results = []
     for (module_name, li_name), meta in line_items.items():
         module_entry = in_scope_modules.get(module_name)
@@ -330,11 +351,13 @@ def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure
     return {
         "line_items": results,
         "by_module": by_module,
+        "unresolved_view_names": unresolved_view_names,
         "summary": {
             "total_line_items_checked": len(results),
             "candidates_for_review": sum(1 for e in results if e["verdict"] == LI_CANDIDATE_VERDICT),
             "modules_with_candidates": sum(1 for m in by_module.values() if m["candidates"]),
             "flagged_but_kept": sum(1 for e in results if e["flagged_but_kept"]),
+            "unresolved_view_names": len(unresolved_view_names),
         },
     }
 
@@ -455,6 +478,7 @@ def to_markdown_line_items(li_report: dict) -> str:
         f"- Total line items checked (modules kept/active at module level): {s['total_line_items_checked']}",
         f"- **Candidates for review: {s['candidates_for_review']}** across {s['modules_with_candidates']} module(s)",
         f"- Flagged for deletion (Notes/inherited Functional Area) but still active or kept: {s['flagged_but_kept']}",
+        f"- Unresolved view/module names in the NUX report: {s['unresolved_view_names']}",
         "",
         "## Line item candidates for review",
         "",
@@ -476,6 +500,21 @@ def to_markdown_line_items(li_report: dict) -> str:
         lines.append("")
     if not any_candidates:
         lines.append("None found.")
+        lines.append("")
+
+    unresolved_view_names = li_report.get("unresolved_view_names", [])
+    if unresolved_view_names:
+        lines.append("## Data quality: unresolved view/module names")
+        lines.append("")
+        lines.append(
+            "These names appeared in the NUX report's front-end exposure sheets but don't "
+            "match any known module name in this model's CSV export - the view may have been "
+            "renamed since the last scrape, so their exposure signal could not be matched to "
+            "any line item. This is a data-quality flag, not a deletion signal."
+        )
+        lines.append("")
+        for name in unresolved_view_names:
+            lines.append(f"- {name}")
         lines.append("")
 
     flagged_but_kept = [e for m in li_report["by_module"].values() for e in m["flagged_but_kept"]]
