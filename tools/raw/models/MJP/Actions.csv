@@ -1,0 +1,236 @@
+﻿,Type
+⠀⠀⠀       ◼️ TEMP,processes
+> TEMP Step 1,processes
+> TEMP Step 4,processes
+> TEMP Input updates Step 5,processes
+> TEMP Step 6,processes
+> TEMP Step 8,processes
+> TEMP Step 10,processes
+> TEMP Step 11,processes
+> TEMP Step 12,processes
+> TEMP Step 13,processes
+>TEMP Cleanup after sync to PROD Step 14,processes
+⠀⠀⠀       ◼️ Other,processes
+> Update Cijfers [NEW],processes
+> Delete KPI's,processes
+> Delete Tafels,processes
+> Delete Thema's,processes
+> Delete Activiteiten,processes
+Huidige datum MAIN (Cloudworks),processes
+Huidige datum BACKUP (Cloudworks),processes
+⠀⠀⠀       ◼️ MJP,processes
+> Update subsets,processes
+> Update Kostenplaats SS,processes
+> Import SIP Anaplan into MJP,processes
+> Update Parameters,processes
+> Update Organisatie structuur,processes
+> Update Account lijst,processes
+> Update BPC Data,processes
+> Update Hierarchies,processes
+> Update Tafel/Thema structuur,processes
+> Import historical data SAP BPC (from DH),processes
+> Update Subafdeling L6,processes
+> Update MJP Kostenplaats L7,processes
+> Bulkload budget SS,processes
+> Importeer personeelstarieven,processes
+> L12 Accounts grouping,processes
+> Update KPI's,processes
+> Manual Update KPI's,processes
+> Manual bulk load boolean KPI's,processes
+> Bulkload AC/BU/LE COEA & Formatie,processes
+> Create Thema L3+,processes
+> Create Thema L3++,processes
+> Aanmaken unicode KP/ACC,processes
+> Update Cijfers,processes
+> Update Toeslag Indirect Data,processes
+> Update Activiteit_Kostenplaats,processes
+>Import prestatiesoorten from DH,processes
+>Import & subload loonkosten,processes
+⠀⠀⠀       ◼️ TO BE CHECKED,processes
+> Delete Version,processes
+> Copy Version,processes
+⠀⠀⠀       ◼️ MASTER DATA ACTIONS,imports
+DH.00 Load Entiteiten L3 from IM in DH,imports
+DH.01 Load Afdelingsgroep L4 from IM in DH,imports
+DH.02 Load Afdeling L5 from IM in DH,imports
+DH.14 Load Account  L12 from IM in DH,imports
+DH.15 Load Parameter data in DA 04 Parameters,imports
+DH.16 Load L IC Code from L in DH,imports
+DH.17 Load Afdeling L5 SS Staven,imports
+DH.18 Load Afdeling L5 SS OPS,imports
+DH.19 Load Afdeling L5 SS AGK,imports
+DH.20 Load Afdeling L5 SS OPS (NON SIP),imports
+DH.21 Load Afdeling L5 SS GM1000,imports
+DH.22 Load SAP BPC data from data hub,imports
+01.01 Load L #Load Tafel/Thema SIP from M LO 04 [Clear LL],imports
+01.02 Load L #Load Tafel/Thema SIP from SIP M EX 08,imports
+01.03 Create L SIP Werkstroom L1 from M LO 04,imports
+01.04 Create L SIP Tafel L2 from M LO 04,imports
+01.05 Create L Product from M LO 04,imports
+01.06 Create L SIP Thema L3 from M LO 04,imports
+01.07 Create L SIP Activiteit L4 from M LO 04,imports
+01.08 Create L SIP Activiteit L4 + from M IM 34,imports
+01.09 Load M SIP Data & SIP Afdeling from SIP M EX 10,imports
+01.0x Load L #Load Subactiviteit SIP from SIP M EX 09,imports
+01.x Create L Subactiviteit from M LO 05,imports
+01.x Create L Subactiviteit L6 from M LO 05,imports
+01.x Create L Eenheid from M LO 05,imports
+KOS 02. Create #L7 Kostenplaats from DH (IM 08.2),imports
+KOS 03. Load data in L07 Kostenplaats from DH (IM 08.2),imports
+KOS 04. Create Afdeling L5,imports
+KOS 05. Update Afdeling L5,imports
+KOS 06. Create Subafdeling L6,imports
+KOS 07. Update Subafdeling L6,imports
+KOS 08. Create Kostenplaats L7,imports
+KOS 09. Update MJP Kostenplaats L7,imports
+KOS 10. Update all Kostenplaats Display Names,imports
+02.03 LO 07 Active SS of Kostenplaats L7,imports
+02.04 Load into MJP Kostenplaats list - SS Active,imports
+02.05 Update MJP Kostenplaats L7 (Lo 07 ),imports
+02.06 Account L12 active SS creation from DH,imports
+03.01 Account L12 Grouping from LO 05 mapping,imports
+03.02 Account L12 DB/TS ss from IM 01a,imports
+⠀⠀⠀       ◼️ MJP ACTIONS,imports
+SS.01 Update SS L12 IC,imports
+SS.02 Update SS L3 IC,imports
+SS.03 Update SS DB/TS,imports
+SS.04 Update SS IC,imports
+SS.05 Update SS DB/TS,imports
+SS.06 Update SS Budget afdeling,imports
+SS.07 Update SS Active Account L12,imports
+SS.08 Update SS Budget Account L12,imports
+SS.09 Update SS Active Kostenplaats L7,imports
+SS.10 Update SS Budget Kostenplaats L7,imports
+SS.11 Create SS - Account L12 - Allocation,imports
+SS.12 Clear SS budget subset lineitem,imports
+SS.13 Bulkload Budget SS kostenplaatsen,imports
+SIP.01 Load totaal Plan SIP From SIP,imports
+SIP.02 Planvariant IM 04 to list Planvarianten,imports
+SIP.03 Load SIP E/G split from IP 09,imports
+SPP.01 Update LO 03 from SPP EX 01,imports
+DATE.01 MAIN datum,imports
+DATE.02 BACKUP datum,imports
+DATE.03 Datum proces run Import SIP,imports
+DATE.04 Datum proces run Update Organisatie Structuur,imports
+DATE.05 Datum proces run Update Parameters,imports
+DATE.06 Datum proces run Update Account lijst,imports
+DATE.07 Datum proces run from Update Hierarchies,imports
+UNI.01 Create COEA-KP-ACC list,imports
+UNI.02 COEA-KP-ACC Information to IM 20,imports
+└ IP 10a. Verdeling naar gr from MJP - Dev / └ IP 10a. Verde,imports
+Account L12 from TEST Code fix.csv,imports
+SIP Subactiviteit L5 from MJP - Dev / 'LO 05 Load Subactivit,imports
+Dummy IC L12 from MJP - Dev / '└ IM 01a. Account L12 - used',imports
+IP 05. Seizoenspatronen from MJP - DEV / '└ IP 10d. Calculat,imports
+SIP Tafel L2 from SIP Tafel L2.csv,imports
+KPI.01 Import KPI Data to L #Load SPIN KPI's,imports
+KPI.02 Update L SPIN - KPI from M LO 09,imports
+KPI.03 Update L SPIN - YTD Berekening from M LO 09,imports
+KPI.04 Update L SPIN - Groepering L1 from M LO 09,imports
+KPI.05 Update L SPIN - Categorie L2 from M LO 09,imports
+KPI.06 Update L SPIN - Organisatie from M LO 09,imports
+KPI.07 Update L KPI_Afdeling from M LO 09,imports
+KPI.08 Subload M IM 42. from M LO 09,imports
+KPI.09 Update L SPIN - KPI from M IP 22,imports
+KPI.10 Update L KPI_Afdeling from M IP 22,imports
+KPI.11 Update M IM43 from M IP 22,imports
+KPI.12 Blank out KPI input,imports
+KPI 13. Load boolean monitorings KPI.csv,imports
+KPI 14. Load boolean Strategische KPI.csv,imports
+KPI 15. Load boolean Focus KPI.csv,imports
+KPI 16. Load boolean meerjarenplan KPI.csv,imports
+KPI 17. Load boolean Financieringsplan KPI.csv,imports
+KPI 18. Load boolean LTIP KPI.csv,imports
+KPI 19. Load boolean afdeling bsc KPI.csv,imports
+KPI 20. Load boolean keten bsc KPI.csv,imports
+KPI 21. Load boolean jaarverslag KPI.csv,imports
+KPI 22. Load boolean Eenheid KPI.csv,imports
+KPI 23. Load boolean bsc groep KPI.csv,imports
+KPI 24. Load boolean jaarplan KPI.csv,imports
+KPI 26. KPI Afdeling load from LO 09,imports
+#Load SPIN Waardes from Upload - SPIN Waardes.csv,imports
+DA 30a. Actuals/LE/Budget from ACBULE afdelingskosten load,imports
+DA 30b. Actuals/LE Input For from ACBULE formatie load.csv,imports
+DA 30c. Actuals/LE Input Tafel/ from ACBULE capex load.csv,imports
+DA 30d. Actuals/LE Input OPEX from ACBULE opex load.csv,imports
+DA 30e. Actuals/LE Input Exter from ACBULE extern load.csv,imports
+DA 30f. Actuals/LE Input U from ACBULE UMDT Capex load.csv,imports
+DA 30f. Actuals/LE Input UM from ACBULE UMDT Opex load.csv,imports
+DA 30f. Actuals/LE Input  from ACBULE UMDT Extern load.csv,imports
+PK.01 Load Tarieven into LO10,imports
+PK.02 Update IP 10f from LO10,imports
+Users from User_testMJP.csv,imports
+L3+ 01. SIP Thema L3+ list creation from input,imports
+L3+ 02. SIP Thema L3++ list creation from input,imports
+L3+ 03. L3++ Delete input,imports
+L3+ 04. Create SIP Thema L3++ Extern,imports
+MJP Kostenplaats L7 from Load kostenplaatsen budget IM 62..c,imports
+CA 32. Toeslag Indirect Subload,imports
+TMP Update IP 10a Eigen Invoer from IP 10a input.txt,imports
+TMP Update IP 10c Overwrite? from IP 10d input.txt,imports
+TMP Update IP 10d Overwrite waarde from IP 10d input.txt,imports
+IP10. Update Cijfers,imports
+IM 43. KPI_Afdeling from SPIN Update - BC + Strategisch them,imports
+MA 61. Kostenplaats L7 mapping,imports
+ACKO01 Load to L Activiteit_Kostenplaats,imports
+ACKO02 Load IM to IM Activiteit_Kostenplaats,imports
+SUB 02. #Load L6 Subafdeling from Data Hub( IM 07.3),imports
+SUB 03. #Load into LO 06. from Data Hub( IM 07.3),imports
+SUB 04. Update Subafdeling L6 list,imports
+TEMP IP 11. IC input update account,imports
+Prestatiesoorten import from DH IM20.1,imports
+TEMP Send inputs from IP 10a to IP 10a NEW,imports
+TEMP Send inputs from IP 10 to IP 10 NEW,imports
+TEMP Send inputs from MA 15 to MA 15 NEW,imports
+TEMP Send inputs from CA 11 to CA 11 NEW,imports
+TEMP Send inputs from IP 10F to IP 10F NEW,imports
+TEMP Send inputs from IP 10F NEW to IP10x1,imports
+TEMP Copy input to new LI IP 11,imports
+TEMP create new KPI_Afdeling codes - step 1,imports
+TEMP update new KPI_Afdeling codes - step 2,imports
+Subload Totaal IP 10x2. NEW,imports
+Subload Totaal IP 10a. NEW,imports
+TEMP Send inputs from MA 51 to MA 51 Version,imports
+TEMP Send inputs from MA 61 to MA 61 Version,imports
+IP 05 - Load previous version,imports
+Load productieve uren from SRT EX 500.1,imports
+LOO 01. Loonkosten - create #Load loonkosten from csv.,imports
+LOO 02. Import loonkosten data from csv.,imports
+LOO 03. Subload loonkosten per Afdeling from LO 12.1,imports
+LOO 04. Subload loonkosten per Subafdeling from LO 12.2,imports
+Import into KPI_Afdeling,imports
+◼️ RUN IN PROD TO ENABLE CLEANUP,imports
+IM 13. Afdeling L5 from MJP - PROD / MA 05. Mapping Afdeling,imports
+IM 19. COEA from MJP - PROD / MA 09. Mapping OPEX/CAPEX en C,imports
+IM 33. Rekeningcategorie from MJP - PROD / MA 10. Kostencate,imports
+IM 04. Entiteit from MJP - PROD / MA 14. Mapping IC code en,imports
+TEMP Update IM 01 Overige personeelskosten,imports
+TEMP Update IP 34,imports
+TEMP Update CA 25,imports
+TEMP Update IM 44,imports
+TEMP Update IM 45,imports
+TEMP Upload to IP 11,imports
+Subafdeling L6 from MJP - Dev / 'IM 05c. Subafdeling'.'IM 05,imports
+Subafdeling L6 from MJP - Dev / 'IM 05c. Subafdeling'.'IM ~1,imports
+KPI. 02.01 Sortering,actions
+5.2,actions
+TEMP - Delete Thema L3++ Extern,actions
+KOS 01. Clear #Load L7 Kostenplaats,actions
+SUB 01. Delete all #Load L6 Subafdeling,actions
+Delete inactive L4 members,actions
+Delete inactive L4+ members,actions
+Order accountlist L12,actions
+> Clear SPIN KPI list,actions
+> Clear SPIN waardes list,actions
+Delete from Uni-code COEA-MJP-ACC,actions
+Order Kostenplaats,actions
+Clear #Load Tafel/Thema SIP list,actions
+Manueel - Werwijder geselecteerde KPI's,actions
+Manueel - Delete Activiteit,actions
+Manueel - Delete Thema,actions
+Manueel - Delete Tafel,actions
+Delete Thema L3 Verrijking,actions
+Delete Account L12 from IM01,actions
+Copy Version,actions
+Create Version,actions
+Delete Version,actions

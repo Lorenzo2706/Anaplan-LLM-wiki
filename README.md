@@ -1,4 +1,4 @@
-# Anaplan LLM Wiki
+# Anaplan Model Builder Agent
 
 A **Claude Code-powered knowledge vault** for Anaplan model builders. Drop in Anapedia docs, articles, and model CSV exports; Claude ingests them into a structured, interlinked Obsidian-style wiki that becomes durable context for future model-building work (formulas, debugging, design reviews, deltas across re-uploads).
 
@@ -90,9 +90,9 @@ Prefer to do it by hand, or want to see exactly what the skill automates? Here's
             └── SKILL.md
 ```
 
-Optional: `scraper_ux.py`, `scrape_model_data.py`, and `models.py` at the vault root, plus `SCRAPE_MODEL_DATA.md`, a gitignored `.env`, and a `UI/` output folder — the toolchain `anaplan-model-optimizer` drives to pull live NUX usage data, and `wiki-data-ingestion` drives to refresh a model's blueprint CSVs. See [Scraper toolchain](#scraper-toolchain-optional) below.
+Optional: a `tools/` folder holding `scraper_ux.py`, `scrape_model_data.py`, and `models.py`, plus `docs/SCRAPE_MODEL_DATA.md`, a gitignored `.env`, and a `UI/` output folder — the toolchain `anaplan-model-optimizer` drives to pull live NUX usage data, and `wiki-data-ingestion` drives to refresh a model's blueprint CSVs. `models.py` is gitignored like `.env` — copy it from `models.py.example`. See [Scraper toolchain](#scraper-toolchain-optional) below.
 
-Only `CLAUDE.md.example`, all seven `.claude/skills/` folders, `scraper_ux.py`/`models.py`/`scrape_model_data.py`/`SCRAPE_MODEL_DATA.md`, and `raw/docs/First setup/` (the sample bundle) ship with the repo — the empty top-level directories (`raw/models/`, `raw/logs/`, `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`, `wiki/sources/`, `analyses/`, `Clippings/`) don't exist yet on a fresh clone, since git doesn't track empty folders. Create them yourself:
+Only `CLAUDE.md.example`, all seven `.claude/skills/` folders, `tools/scraper_ux.py`/`tools/models.py.example`/`tools/scrape_model_data.py`/`docs/SCRAPE_MODEL_DATA.md`, and `raw/docs/First setup/` (the sample bundle) ship with the repo — the empty top-level directories (`raw/models/`, `raw/logs/`, `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`, `wiki/sources/`, `analyses/`, `Clippings/`) don't exist yet on a fresh clone, since git doesn't track empty folders. Create them yourself:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path raw/models, raw/logs, raw/assets, `
@@ -173,7 +173,7 @@ The `wiki-data-ingestion` skill activates automatically. If you don't provide a 
 
 > "Refresh the `<Model>` data." (or "pull the latest `<Model>` export", "ingest the new `<Model>` CSVs")
 
-The `wiki-data-ingestion` skill is scraper-driven by default: if the optional `scrape_model_data.py` toolchain is set up, it asks which model, resolves (or helps you register) a `models.py` shortcut, snapshots the current `raw/models/<Model>/` files for diffing, then runs the scraper to pull all 13 blueprint CSVs straight from Anaplan into `raw/models/<Model>/`. Prefer dropping CSVs manually into `raw/models/<Model>/` instead? That still works — just say "ingest the new `<Model>` CSVs."
+The `wiki-data-ingestion` skill is scraper-driven by default: if the optional `tools/scrape_model_data.py` toolchain is set up, it asks which model, resolves (or helps you register) a `models.py` shortcut, snapshots the current `raw/models/<Model>/` files for diffing, then runs the scraper to pull the model's blueprint CSVs straight from Anaplan into `raw/models/<Model>/` (7 files by default, 15 with `--full`). Prefer dropping CSVs manually into `raw/models/<Model>/` instead? That still works — just say "ingest the new `<Model>` CSVs."
 
 Either way, the skill detects automatically whether this is a first-time ingest or a re-upload by checking `wiki/sources/` and `wiki/models/`. On a re-upload it diffs against the prior state (an ephemeral pre-scrape snapshot for scraper refreshes, or the existing wiki pages as a proxy for manual drops), applies only added/removed/renamed/modified items, preserves your annotations, and writes a new dated delta source page. **Raw CSVs are always overwritten in place** — this vault keeps no dated archive copies, whether the refresh came from the scraper or a manual re-upload.
 
@@ -195,7 +195,7 @@ Triggers the **`wiki-lint`** skill, which scans for orphan pages, broken `[[wiki
 
 > "Which modules in `<Model>` are safe to delete?" (or "optimize this model" / "model housekeeping")
 
-Triggers the **`anaplan-model-optimizer`** skill. It runs `scraper_ux.py` against the live tenant to pull fresh NUX usage data for the model, then cross-references it against `raw/models/<Model>/Modules.csv` and `Imports.csv` so Data/Load/Calculation modules that are invisible-by-design in the UX aren't flagged as dead. Reports candidates in chat and saves the full report under `analyses/`. Requires the [scraper toolchain](#scraper-toolchain-optional).
+Triggers the **`anaplan-model-optimizer`** skill. It runs `tools/scraper_ux.py` against the live tenant to pull fresh NUX usage data for the model, then cross-references it against `raw/models/<Model>/Modules.csv` and `Imports.csv` so Data/Load/Calculation modules that are invisible-by-design in the UX aren't flagged as dead. Reports candidates in chat and saves the full report under `analyses/`. Requires the [scraper toolchain](#scraper-toolchain-optional).
 
 ### Generate a Word doc for a model
 
@@ -211,25 +211,27 @@ Triggers the **`anaplan-model-documentation`** skill. Fans out six background re
 - **Different naming convention?** Ingest your own naming doc into `raw/docs/` and Claude will create a `wiki/patterns/naming-convention-<yourteam>.md` page from it.
 - **More models?** Just create `raw/models/<NewModel>/` and `wiki/models/<NewModel>/`. The per-model-subfolder convention means filenames can repeat across models — the directory name disambiguates.
 - **More skills?** Add `.claude/skills/<skill-name>/SKILL.md`. Frontmatter `description:` controls when it auto-activates.
-- **More models for the scraper?** Add a `<PREFIX>_MODEL_ID` to `.env` and mirror the `fsp` entry in `models.py` — `CUSTOMER_ID` and the workspace ID are shared across every model in the tenant, only `model_id` differs.
+- **More models for the scraper?** Add a `<PREFIX>_MODEL_ID` to `.env` and mirror the example entry in `tools/models.py` — `CUSTOMER_ID` and the workspace ID are shared across every model in the tenant, only `model_id` differs.
 
 ---
 
 ## Scraper toolchain (optional)
 
-Two independent tools share this toolchain: **`anaplan-model-optimizer`**'s dead-module analysis (needs live NUX usage data that never appears in a CSV export) and **`wiki-data-ingestion`**'s scraper-driven model refresh (needs a live pull of the 13 blueprint CSVs). Both are optional — manual CSV drops and skipping the optimizer skill both still work without this section set up.
+Two independent tools share this toolchain: **`anaplan-model-optimizer`**'s dead-module analysis (needs live NUX usage data that never appears in a CSV export) and **`wiki-data-ingestion`**'s scraper-driven model refresh (needs a live pull of the blueprint CSVs). Both are optional — manual CSV drops and skipping the optimizer skill both still work without this section set up.
 
-- **`scraper_ux.py`** (vault root) — interactive wizard that logs into Anaplan via Selenium/Edge, lets you pick a model, and exports a 5-sheet Excel report (`All Views`, `Actions Usage Report`, `Views Usage Report`, `Modules Usage Count`, `Actions <model>`). Every default (username, environment, SSO, output folder) is sourced from `.env` — no hardcoded credentials. Drives `anaplan-model-optimizer`.
-- **`scrape_model_data.py`** (vault root) — a separate exporter (reuses `scraper_ux.py`'s login as a black box) that pulls a model's 13 blueprint/settings CSVs (Modules, Line Items, Line Item Subsets, General Lists, Versions, Time Ranges, Actions, Source Models, Roles + Roles Modules/Versions/Lists/Actions) straight into `raw/models/<Model>/`, overwriting each file in place — no dated copies. Run `python scrape_model_data.py <shortcut> --name "<Model Name>"`, or `python scrape_model_data.py --list-models` to fetch every model visible to the account via the live API when no `models.py` shortcut exists yet. Drives `wiki-data-ingestion`'s model-refresh path. See `SCRAPE_MODEL_DATA.md` for the full field list, partial-export handling, and implementation notes.
-- **`models.py`** (vault root) — a `MODELS` dict of quick-select shortcuts so the wizard's "pick from a live list" step can be scripted instead of browsed. An entry only counts as usable once its `customer_id`, `workspace_id`, and `model_id` are all present.
+- **`tools/scraper_ux.py`** — interactive wizard that logs into Anaplan via Selenium/Edge, lets you pick a model, and exports a 5-sheet Excel report (`All Views`, `Actions Usage Report`, `Views Usage Report`, `Modules Usage Count`, `Actions <model>`). Every default (username, environment, SSO, output folder) is sourced from `.env` — no hardcoded credentials. Drives `anaplan-model-optimizer`.
+- **`tools/scrape_model_data.py`** — the merged model-settings exporter (reuses `scraper_ux.py`'s login as a black box, pulls most files over Anaplan's HTTP APIs, and keeps the Selenium UI path in the same script). Default mode gets 7 files (5 REST + `Modules.csv`/`General Lists.csv` via a Selenium UI export the API can't deliver usably); `--full` adds the 8 legacy-engine grids for 15 total; `--ui-only` runs the original 13-grid pure-Selenium fallback. Run `python tools/scrape_model_data.py <shortcut> --name "<Model Name>"`, or `python tools/scrape_model_data.py --list-models` to fetch every model visible to the account via the live API when no `models.py` shortcut exists yet. Drives `wiki-data-ingestion`'s model-refresh path.
+- **`tools/models.py`** (gitignored, like `.env`) — a `MODELS` dict of quick-select shortcuts so the wizard's "pick from a live list" step can be scripted instead of browsed. An entry only counts as usable once its `customer_id`, `workspace_id`, and `model_id` are all present. Copy `tools/models.py.example` (tracked, ships empty with one commented-out example entry) to `tools/models.py` and fill in your own shortcuts — they never reach git.
 - **`.env`** (gitignored, create it yourself) — `ANAPLAN_USERNAME`, `ANAPLAN_PASSWORD`, `ANAPLAN_ENVIRONMENT`, `ANAPLAN_USE_SSO`, `ANAPLAN_OUTPUT_FOLDER`, the shared `CUSTOMER_ID`/workspace ID, and per-model `<PREFIX>_MODEL_ID` entries.
 - **`UI/`** (gitignored) — default output folder for scraped Excel reports and per-run logs. May contain real model data — never commit it.
+
+See `docs/SCRAPE_MODEL_DATA.md` for the full field list, partial-export handling, and implementation notes on both exporters.
 
 Install and run:
 
 ```powershell
 pip install selenium openpyxl webdriver-manager python-dotenv
-python scraper_ux.py
+python tools/scraper_ux.py
 ```
 
 It opens a real (non-headless) Edge window — the driver is auto-downloaded via Selenium Manager. Every wizard prompt defaults from `.env`; only the model-selection number and the final "scrape another model?" question need real input.
@@ -259,6 +261,6 @@ What's checked in here as a working example:
 - `.claude/skills/anaplan-model-documentation/` — generates a full Word documentation deliverable for a model via parallel research agents (project skill)
 - `.claude/skills/wiki-lint/` — generic wiki sanity-check skill (project skill)
 - `.claude/skills/wiki-data-ingestion/` — structured ingest pipeline for docs and model CSVs (project skill)
-- `scraper_ux.py`, `scrape_model_data.py`, `models.py`, `SCRAPE_MODEL_DATA.md` — optional scraper toolchain: NUX usage-data export (drives `anaplan-model-optimizer`) and model blueprint CSV export (drives `wiki-data-ingestion`'s model-refresh path); see [Scraper toolchain](#scraper-toolchain-optional) above
+- `tools/scraper_ux.py`, `tools/scrape_model_data.py`, `tools/models.py.example`, `docs/SCRAPE_MODEL_DATA.md` — optional scraper toolchain: NUX usage-data export (drives `anaplan-model-optimizer`) and model blueprint CSV export (drives `wiki-data-ingestion`'s model-refresh path); see [Scraper toolchain](#scraper-toolchain-optional) above. `tools/models.py` itself is gitignored — copy it from `models.py.example` locally.
 - `raw/docs/First setup/` — sample ingested sources (Anapedia clippings, methodology docs), shipped nested under a wrapper folder for sharing — flatten into `raw/docs/` during setup (step 2 above)
 - `wiki/`, `index.md`, `log.md`, and `analyses/` are local-only and not checked in — Claude generates them as you ingest content. Start by copying `CLAUDE.md.example` to `CLAUDE.md`, customizing it, and ingesting your first source.

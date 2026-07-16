@@ -47,12 +47,10 @@ the user to delete something that quietly breaks half the model.
 Ask which model to analyze if it isn't already clear from context. The
 cross-reference in Step 4 needs `raw/models/<Model Name>/Modules.csv` (and
 ideally `Imports.csv`) to already exist - these are the CSVs the
-`wiki-data-ingestion` skill produces from a model's own CSV export. Per the
-project's `CLAUDE.md`, the three currently-ingested models are:
-
-- `FSP 2.0` - Polaris
-- `AAC` - Polaris
-- `MJP` - Classic (~440 modules)
+`wiki-data-ingestion` skill produces from a model's own CSV export. Check the
+project's `CLAUDE.md` for its Engine defaults list (which models are
+currently ingested, and whether each is Classic or Polaris) - don't assume
+either engine, and ask the user if the model isn't listed there yet.
 
 If the requested model has no `raw/models/<Model Name>/` folder yet, tell the
 user Step 4's safety cross-check needs at least a `Modules.csv` export dropped
@@ -62,14 +60,14 @@ internal formula dependencies if they choose that path.
 
 ## Step 2 - Make sure the model has a scraper shortcut
 
-`scraper_ux.py` prompts interactively for everything, including a numbered
+`tools/scraper_ux.py` prompts interactively for everything, including a numbered
 pick from a live list of every model in the tenant. To automate it safely,
-the target model must be a pre-configured shortcut in `models.py` (see the
-`fsp` entry there) - that turns "pick from a live list" into "type a known
+the target model must be a pre-configured shortcut in `tools/models.py` (see
+the example entry there) - that turns "pick from a live list" into "type a known
 number," which is the only part of the wizard that can't otherwise be
 scripted blind.
 
-1. Read `models.py`. `MODELS` is a dict; a model counts as a usable shortcut
+1. Read `tools/models.py`. `MODELS` is a dict; a model counts as a usable shortcut
    only if `customer_id`, `workspace_id`, and `model_id` are all truthy.
    Compute the 1-based position of the target model among the usable
    shortcuts, in dict order - that number is exactly what the wizard's
@@ -78,10 +76,10 @@ scripted blind.
    Ask the user for it - they can copy it out of the browser address bar while
    the model is open in Anaplan (`.../models/<GUID>/...`). Then:
    - Append `<PREFIX>_MODEL_ID=<guid>` to `.env` (pick a short prefix from the
-     model name, e.g. `AAC`, `MJP`).
-   - Add a matching entry to the `MODELS` dict in `models.py`, mirroring the
-     `"fsp"` entry exactly (same `customer_id`/`workspace_id` variables, new
-     `model_id` env var).
+     model name).
+   - Add a matching entry to the `MODELS` dict in `tools/models.py`, mirroring
+     the commented-out example entry exactly (same `customer_id`/`workspace_id`
+     variables, new `model_id` env var).
    - Re-read the file to recompute the shortcut's numeric position.
 3. Preflight-check `.env` has what non-interactive login needs, **without
    printing or reading any secret values** - only check presence, e.g.:
@@ -89,7 +87,7 @@ scripted blind.
    python -c "import os; from dotenv import load_dotenv; load_dotenv(); print('ANAPLAN_USERNAME' in os.environ and bool(os.getenv('ANAPLAN_USERNAME')), bool(os.getenv('ANAPLAN_PASSWORD')), bool(os.getenv('CUSTOMER_ID')), bool(os.getenv('DEV_POLARIS')))"
    ```
    `ANAPLAN_PASSWORD` in particular is non-negotiable for automation: if it's
-   missing, `scraper_ux.py` falls back to `getpass.getpass()`, which cannot be
+   missing, `tools/scraper_ux.py` falls back to `getpass.getpass()`, which cannot be
    fed through a piped stdin sequence and will hang the run. If any of these
    come back `False`, stop and ask the user to fill in `.env` (never ask them
    to paste the value into chat - just tell them which key is missing).
@@ -116,11 +114,12 @@ That means the full stdin payload is five blank lines, the shortcut number,
 one more blank line, then `n`:
 
 ```bash
-printf '\n\n\n\n\n%s\n\nn\n' "<shortcut_number>" | python scraper_ux.py
+printf '\n\n\n\n\n%s\n\nn\n' "<shortcut_number>" | python tools/scraper_ux.py
 ```
 
 Run this in the background - it opens a real (non-headless) Edge window and
-can take several minutes on large models (MJP has ~440 modules). Tell the
+can take several minutes on large models (a large model can easily exceed
+400 modules). Tell the
 user up front: *"A browser window is about to open. If your organization uses
 SSO with MFA, please complete that step in the window when it appears - the
 script only pauses briefly after login before it starts pulling data."*

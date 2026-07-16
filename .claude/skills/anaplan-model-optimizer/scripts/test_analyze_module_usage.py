@@ -166,7 +166,7 @@ def test_load_line_items_csv(tmp_path):
 
 
 @pytest.mark.parametrize("obj,expected", [
-    ("Data Hub 2.0 / 'SYS 05. Date of Today'.Date MBH Master Data", ("SYS 05. Date of Today", "Date MBH Master Data")),
+    ("Data Hub 2.0 / 'SYS 05. Time Settings'.Current Period", ("SYS 05. Time Settings", "Current Period")),
     ("'CA01 Candidate'.Line A", ("CA01 Candidate", "Line A")),
     ("SM 02. General Settings", None),  # whole-module target, no line item
     ("", None),

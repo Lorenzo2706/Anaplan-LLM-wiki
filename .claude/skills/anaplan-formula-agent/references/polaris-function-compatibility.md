@@ -1,7 +1,7 @@
 # Polaris Function Compatibility — Authoritative Reference
 
 **Source:** All Anapedia function pages in `raw/docs/` (scraped 2026-05-02).  
-**Rule:** Before suggesting any formula for a Polaris model (FSP 2.0, AAC, or any model with Polaris engine), verify every function used is in the ✅ or ⚠️ columns below — never assume availability.
+**Rule:** Before suggesting any formula for a Polaris model, verify every function used is in the ✅ or ⚠️ columns below — never assume availability.
 
 ---
 

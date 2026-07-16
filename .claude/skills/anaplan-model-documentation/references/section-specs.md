@@ -22,10 +22,11 @@ prefix - the parser nests them one level under whatever numbered heading
 came before, which is exactly where they belong.
 
 Adjust the specifics of the STYLE MODEL blocks below if the user gave you a
-different reference document than MBH to mirror this time - the *shape*
+different reference document to mirror this time - the *shape*
 (what gets a table vs. prose, what the table columns are) is what matters,
-not the literal MBH content. Re-derive the shape from whatever reference doc
-is in play, the same way this skill's authors extracted it from MBH.
+not the literal content of the original reference doc this skill's default
+was extracted from. Re-derive the shape from whatever reference doc is in
+play.
 
 ---
 
@@ -129,8 +130,8 @@ STYLE MODEL - mirror this shape:
 
   2.2 Administration
     Sub-topics as unnumbered H3/H4 (adapt to what the model actually has -
-    don't force MBH's exact 3 sub-topics if the model's admin surface is
-    shaped differently):
+    don't force the reference example's exact 3 sub-topics below if the
+    model's admin surface is shaped differently):
     - Version/scenario management - how it's set up, any manual-linkage
       caveat
     - List/hierarchy admin scoping - who can add/delete items, which lists
@@ -139,8 +140,8 @@ STYLE MODEL - mirror this shape:
 
 YOUR DELIVERABLE - determine {MODEL}'s actual process-flow stage names from
 its wiki (check the calculation-flow diagram / DISCO module sections) rather
-than assuming MBH's names - use whatever 2-4 stages the model's own module
-structure actually groups into:
+than assuming the reference example's names below - use whatever 2-4 stages
+the model's own module structure actually groups into:
 
 ## 2. Data Flows
 ### 2.1 Process Flow

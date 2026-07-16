@@ -1,0 +1,18 @@
+,Start Period,Number of Periods,Quarter Totals,Half-Year Totals,Year To Date,Year To Go,Total of All Periods
+TR Model calendar + Total periods,FY21: 1 Jan 2021,37,false,false,false,false,true
+TR LTF Inkomsten,FY11: 1 Jan 2011,41,false,false,false,false,false
+TR LTF,FY21: 1 Jan 2021,31,false,false,false,false,false
+TR LTF vanaf 2019,FY19: 1 Jan 2019,33,false,false,false,false,false
+TR BPC DATA ACTUAL,FY19: 1 Jan 2019,4,false,false,false,false,false
+TR BPC DATA,FY19: 1 Jan 2019,6,false,false,false,false,false
+TR INPUT,FY21: 1 Jan 2021,8,false,false,false,false,false
+TR INPUT + HIST,FY19: 1 Jan 2019,10,false,false,false,false,false
+TR Budget,FY20: 1 Jan 2020,4,true,false,false,false,false
+TR MJP,FY23: 1 Jan 2023,9,false,false,false,false,false
+TR MJP inclusief totaal,FY23: 1 Jan 2023,9,false,false,false,false,true
+TR BPC Actuals,FY23: 1 Jan 2023,3,false,false,false,false,false
+TR BPC T & T-1,FY24: 1 Jan 2024,2,false,false,false,true,false
+MJP BU TR,FY24: 1 Jan 2024,4,false,false,false,false,false
+TR formatie ontwikkeling,FY24: 1 Jan 2024,4,false,false,false,false,false
+TR 20 Y,FY19: 1 Jan 2019,21,false,false,false,false,false
+TR Budget 2026,FY26: 1 Jan 2026,2,false,false,false,false,false

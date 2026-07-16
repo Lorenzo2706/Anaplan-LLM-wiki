@@ -1,0 +1,223 @@
+# `scrape_model_data.py` — model-settings CSV exporter
+
+Retrieves the model-settings export **mostly through Anaplan HTTP APIs** (no Dojo
+UI navigation), with **two grids exported via the Selenium UI** because the API
+can't deliver them reliably. The browser is used only to log in / hold the
+session and to drive those two UI exports.
+
+`tools/scrape_model_data.py` is the single merged exporter. It contains both the
+fast API-driven path and the original pure-Selenium model-settings fallback (see
+[Pure-UI fallback](#pure-ui-fallback---ui-only) below).
+
+Three modes:
+
+- **default (7 fast files)** → 5 files from Anaplan's REST API v2
+  (`/2/0/models/{id}/...`) as JSON over plain `requests`, **plus** `Modules.csv`
+  and `General Lists.csv` via the Selenium model-settings UI export.
+- **`--full` (all 15 files)** → the 7 default files **plus** the 8 legacy-engine
+  grids over the **classic core-webapp API** (not the UI). One browser login.
+- **`--ui-only` (13 UI files)** → the original pure-Selenium model-settings
+  export path, useful for debugging or as a fallback if the API path changes.
+
+```powershell
+python tools/scrape_model_data.py modela --name "ModelA"           # 7 fast files
+python tools/scrape_model_data.py modela --name "ModelA" --full    # all 15 files
+python tools/scrape_model_data.py modela --name "ModelA" --ui-only # pure UI fallback
+python tools/scrape_model_data.py modela --out "C:/temp/modela_export"    # explicit folder
+```
+
+## Why login still needs a browser
+
+Basic Authentication may be disabled for the Integration API on your tenant: the
+token endpoint (`auth.anaplan.com/token/authenticate`) can reject `.env`
+credentials with `FAILURE_BAD_CREDENTIAL` even though the *same*
+username/password log in fine through the web UI (observed live, 2026-07-15).
+If no client certificate or OAuth client is configured either, a truly
+head-less run is **not possible** — it would need an Anaplan admin to
+enable OAuth2 or certificate auth. The tool reuses `scraper_ux.login` once, then
+lifts the browser session cookies for the REST calls and drives the classic-
+engine calls via `fetch()` in the authenticated iframe.
+
+## How the three paths work
+
+**REST API v2 (5 files).** Standard `GET /2/0/models/{id}/{lineItems|versions|
+actions|imports|views}` with the browser's session cookies lifted into a
+`requests.Session`. `Line Items.csv` is the rich one (formula, format,
+applies-to, summary, time scale/range, versions, style, cell count, is-summary,
+formula scope, use switchover, breakback, start of section, referenced-by,
+module name). A few columns the REST API doesn't expose are left blank
+(Populated Cell Count, Memory Used, Calculation Complexity/Effort, Read/Write
+Access Driver, Users List, Parent, Code, Data Tags).
+
+**Selenium UI export (Modules.csv + General Lists.csv — default and `--full`).** These two
+blueprint grids are exported by navigating the classic model-settings shell and
+running the grid's own Export (via the local `_export_one_target` helper),
+because neither API path delivers them correctly:
+
+- **REST is too sparse.** `GET /modules` returns id+name only, so every module
+  stat/metadata column (Functional Area, Applies To, Time Scale, Cell Count,
+  Referenced By, Used in Dashboards, …) came out blank. `GET /lists` lacks Top
+  Level, Parent Hierarchy, and the dependency-graph columns (Referenced in
+  Applies To / as Format / in Formula), which only the classic engine computes.
+- **The classic core-webapp API can't drive them reliably.** Unlike the 8 legacy
+  grids, there is no dependable `viewDefinition` template for Modules/General
+  Lists: the classic client references already-open grids **by view index**
+  (so its jsonrpc traffic carries no reusable definition), and the UI export is
+  a **form-submit download** that isn't interceptable via `fetch`/XHR (0 servlet
+  requests captured). A *guessed* template is dangerous — a wrong `viewDefinition`
+  silently exports the **wrong grid**. For these core files, "silently wrong" is
+  unacceptable.
+
+The Selenium export is **byte-for-byte identical** to Anaplan's own export
+(SHA-256-verified against a reference export). It runs with a 3-attempt retry that
+re-opens the shell each try.
+
+**Classic core-webapp API (8 legacy files, `--full`).** The legacy blueprint
+grids (Line Item Subsets, Time Ranges, Source Models, Roles + Roles Modules/
+Versions/Lists/Actions) live in the classic core engine and have no REST
+endpoint — but the engine's own HTTP protocol is driven directly, no UI clicking:
+
+1. `POST .../anaplan/jsonrpc` `{requestType:"VIEW_REQUEST_SET", viewRequests:[{viewIndex:-1, viewGuid:<new>, viewDefinition:<grid template>}], activeViewIndices:[], modelDefinitionSerialNumber, clientSessionId}` → returns the opened view's `viewIndex`.
+2. `POST .../anaplan/jsonrpc` `{requestType:"PROGRESS", activeViewIndices:[viewIndex]}` → returns a `taskId`.
+3. `POST .../anaplan/servlet?taskType=export` (multipart: `taskId`, `entityId`=grid name, `viewDefinition`, `fileType=CSV`) → streams the grid CSV.
+
+A **minimal** `VIEW_REQUEST_SET` (empty carried view-state, single new view) is
+sufficient — proven live against all 8 grids, byte-for-byte equal to the
+reference exports. `entityId` (= the grid name, i.e. the filename minus `.csv`)
+is the primary driver; the `viewDefinition` is a **model-independent template**
+(system identifiers `_SYSTEM_AXIS_IDENTIFIER.*` / `_2000000xxx_` / `_4000xxxxx_`
+only) baked into `_LEGACY_TEMPLATES`. Only `modelDefinitionSerialNumber` and
+`clientSessionId` are per-session, and they're scraped from the client's own
+first jsonrpc call at run time. Any legacy grid that fails the classic-API path
+falls back to this script's UI export path for that one grid, so
+coverage never regresses.
+
+## Output
+
+All CSVs reuse the **exact blueprint column layout** (first header cell blank,
+first data column = entity name), so `wiki-data-ingestion` parses them
+identically to the pure-Selenium exports. `Modules.csv`, `General Lists.csv`, and
+the 8 legacy files are byte-for-byte the same grids the UI produces. `Line
+Items.csv` omits the module-separator pseudo-rows the UI export interleaves (~1
+fewer row per module) but is otherwise cleaner — every line item still carries
+its `Module Name`.
+
+> **Note:** the tool overwrites each output CSV in place. If an output file is
+> open in Excel, Windows locks it and that one file fails with
+> `[Errno 13] Permission denied` (the others still succeed). Close the file(s)
+> and re-run.
+
+## Finding a model that isn't registered yet
+
+The script will not scrape a raw model_id GUID directly — it needs a
+`models.py` shortcut with `customer_id`/`workspace_id`/`model_id`. If you don't
+have those for a model yet, fetch the live list instead of hunting through the
+Anaplan UI:
+
+```powershell
+python tools/scrape_model_data.py --list-models
+```
+
+Logs in, calls the same `springboard-platform-gateway-service/models` API the
+interactive `scraper_ux.py` wizard uses for "Browse all models…", and prints
+every model visible to this account as JSON (`model_name`, `model_id`,
+`workspace_name`, `workspace_id`, `customer_id`) — no `models.py` shortcut
+required. Confirm the right entry with the user, then add it to `.env`/
+`models.py` (mirror the example entry in `tools/models.py.example`) before
+scraping. `tools/models.py` itself is gitignored — like `.env`, it holds your
+real shortcuts locally and never reaches git; `tools/models.py.example` is
+the tracked template to copy from on a fresh clone.
+
+## When to use which mode
+
+- **Quick formula/structure refresh** → default mode (7 fast files).
+- **Complete model export** → `--full` (all 15, one login). Recommended default
+  for onboarding/refresh.
+- **Pure UI export / debugging a single grid in isolation** →
+  `python tools/scrape_model_data.py <shortcut> --ui-only` (see below). Still
+  useful as the fallback path `--full` invokes automatically.
+
+Prerequisites: `.env` filled in, a `models.py` shortcut, Edge installed, and
+`pip install requests selenium openpyxl webdriver-manager python-dotenv`.
+
+---
+
+## Pure-UI fallback: `--ui-only`
+
+`python tools/scrape_model_data.py <shortcut> --ui-only` runs the original,
+fully UI-driven exporter from the merged script. It automates the manual
+"export the 13 blueprint CSVs from the Anaplan UI" step by navigating the
+model-settings Dojo app grid-by-grid. Use it to debug one grid in isolation, or
+as a full pure-UI fallback if the API-driven approach ever breaks against a
+future Anaplan release.
+
+### What it produces
+
+All 13 files land in the output folder, matching the naming used under
+`raw/models/<Model>/`:
+
+```
+Modules.csv          Line Items.csv       Line Item Subsets.csv
+General Lists.csv     Versions.csv         Time Ranges.csv
+Actions.csv          Source Models.csv    Roles.csv
+Roles Modules.csv    Roles Versions.csv   Roles Lists.csv
+Roles Actions.csv
+```
+
+> **Not every model's raw folder will have this exact set.** A model's
+> `raw/models/<Model>/` folder may have fewer than these 13 files (e.g. it
+> predates the scraper, or the export includes files the scraper doesn't
+> produce at all, like `Imports.csv`/`Import Data Sources.csv`). Re-running
+> the scraper only ever touches these 13 filenames — anything else already in
+> the folder is left alone, and any of the 13 that fail to export leave the
+> prior file for that name untouched rather than deleting it.
+
+### Usage
+
+```powershell
+# Export into raw/models/<Model Name>/ (the default)
+python tools/scrape_model_data.py modela --name "ModelA" --ui-only
+
+# Export into an explicit folder (e.g. a scratch dir for testing)
+python tools/scrape_model_data.py modela --out "C:/temp/modela_export" --ui-only
+```
+
+As a library:
+
+```python
+from scrape_model_data import download_model_exports
+results = download_model_exports("modela", out_dir=r"raw/models/ModelA")
+# results: {filename: {"ok": bool, "saved_path": str|None, "error": str|None}}
+```
+
+`model` is a `models.MODELS` shortcut key (e.g. `modela`). It opens a real
+(non-headless) Edge window and logs in automatically via basic auth; no manual
+step is needed unless SSO is enabled. It prints a per-grid ✅/✗ summary and an
+`N/13 exported` line, and exits 0 only when all 13 succeed.
+
+### Adding a new model
+
+1. Add `<PREFIX>_MODEL_ID=<guid>` to `.env` (workspace + `CUSTOMER_ID` are shared).
+2. Mirror the example entry in `models.py` with `customer_id`, `workspace_id`,
+   `model_id`, then call `python tools/scrape_model_data.py <prefix> --name "<Model Name>" --ui-only`
+   (or `tools/scrape_model_data.py`, which shares the same shortcut).
+
+(Raw model-id GUIDs are rejected on purpose — a bare id has no reliable way to infer
+its workspace, so register a shortcut instead.)
+
+### How it works (for future maintainers)
+
+The model-settings UI is a legacy **Dojo** app inside **nested iframes**: an outer
+shell iframe (`data-testid="shell-content"`) holds the left-nav; its first nested
+iframe holds the grid, sub-tabs, toolbar and export dialog. Per grid the script:
+navigates the left-nav (shell frame) → switches into the inner grid frame → clicks
+the sub-tab if any → clicks the toolbar `Export...` (`<span class="dijitButtonText">`,
+not a `<button>`) → presses **Run Export** in the dialog (File Type defaults to CSV) →
+saves the download under the target filename.
+
+Two non-obvious gotchas it handles:
+- The modeling URL **must not** contain a double slash (`.../` + `/a/...`), or Anaplan
+  serves a "We can't find this page" 404 — the script `rstrip("/")`s the base URL.
+- Dojo keeps **hidden duplicate widgets** in the DOM, so every click is filtered to
+  `is_displayed()`; sub-tabs are matched on alphanumeric-only text because the
+  "Roles → Modules" arrow is a CSS icon (real text is `RolesModules`).

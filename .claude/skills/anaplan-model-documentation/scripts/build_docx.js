@@ -3,11 +3,12 @@
  * into a Word document.
  *
  * Default visual style mirrors this vault's accumulated house style
- * (originally lifted from an MBH Documentatie.docx example, then reused for
- * AAC): Arial, heading color #0F4761, plain black-grid tables. Pass a style
- * override JSON as the 5th argument to mirror a different reference document
- * instead - see references/docx-style-guide.md for what's overridable and
- * how to pull the values out of a real .docx via the docx skill's unpack.py.
+ * (originally lifted from a reference Documentatie.docx example, then reused
+ * for later models): Arial, heading color #0F4761, plain black-grid tables.
+ * Pass a style override JSON as the 5th argument to mirror a different
+ * reference document instead - see references/docx-style-guide.md for what's
+ * overridable and how to pull the values out of a real .docx via the docx
+ * skill's unpack.py.
  *
  * Usage:
  *   node build_docx.js <sections.json> <output.docx> "<Title>" "<Subtitle>" [style.json]

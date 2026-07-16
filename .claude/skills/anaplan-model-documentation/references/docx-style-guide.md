@@ -4,8 +4,8 @@
 text, `#0F4761` heading color (dark teal-blue), plain black single-line
 "Table Grid" borders on every table, US Letter page size with 1" margins.
 This is not an arbitrary choice: it's the style that was extracted from a
-real example document a user provided (`MBH Documentatie.docx`) during this
-skill's first run, on the theory that Word's own default "Office" theme
+real example document a user provided during this skill's first run, on the
+theory that Word's own default "Office" theme
 (which that document used untouched) reads as more native and less
 "generated" than a custom color scheme invented from scratch. Reuse the
 default unless the user gives you a specific reason not to.
@@ -56,8 +56,8 @@ minutiae rarely changes whether the output reads as "matching."
 | `noteBar` / `noteFill` | `"8FAADC"` / `"F2F6FC"` | Left-border and background color for `> [!note]` callouts |
 | `warnBar` / `warnFill` | `"C9A227"` / `"FFF8E6"` | Left-border and background color for `> [!warning]` callouts |
 
-Note callouts aren't part of MBH's own style (that document has no
-callout convention at all) - they were added in this skill's default
+Note callouts aren't part of that original reference document's own style
+(it has no callout convention at all) - they were added in this skill's default
 because model documentation genuinely benefits from visually flagging
 caveats (suspected bugs, unconfirmed renames, data-quality warnings) rather
 than burying them in plain prose. Keep them even when mirroring a plainer

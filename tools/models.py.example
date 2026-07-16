@@ -1,0 +1,18 @@
+from os import getenv
+
+# Example shortcut entry — copy this pattern for each model you want to scrape.
+# `customer_id` and the workspace id are shared across every model in the same
+# tenant/workspace; only `model_id` differs per model. Add `<PREFIX>_MODEL_ID`
+# (and a workspace var if it's a new workspace) to `.env`, uncomment and adapt
+# the block below, then register it in MODELS.
+#
+# modela = {
+#     "name": "ModelA",
+#     "customer_id": getenv("CUSTOMER_ID"),
+#     "workspace_id": getenv("MODELA_WORKSPACE"),
+#     "model_id": getenv("MODELA_MODEL_ID"),
+# }
+
+MODELS = {
+    # "modela": modela,
+}

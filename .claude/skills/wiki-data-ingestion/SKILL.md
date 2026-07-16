@@ -30,8 +30,8 @@ doing anything else:
   file(s) the user already has in hand and wants placed into the wiki as-is.
 - **Path B — Model data ingestion**: the user wants a model's blueprint data (Modules, Line
   Items, Lists, Actions, Roles, etc.) refreshed or ingested for the first time — e.g. "refresh
-  the AAC data", "pull the latest FSP export", "ingest model X". This path is scraper-driven
-  (`scrape_model_data.py`) — the user does not need to have any file in hand.
+  the ModelA data", "pull the latest ModelB export", "ingest model X". This path is scraper-driven
+  (`tools/scrape_model_data.py`) — the user does not need to have any file in hand.
 
 If the user's message doesn't make the path obvious, ask: *"Is this a document/source to
 ingest, or a model data refresh?"*
@@ -70,23 +70,23 @@ to Phase 1 with the provided paths.
 
 ## Phase 0B — Resolve the model and its scraper shortcut (Path B only)
 
-1. **Ask which model** if not already stated: *"Which model — AAC, FSP 2.0, MJP, or a new
-   one?"*
+1. **Ask which model** if not already stated: *"Which model?"* Don't assume any particular
+   model — this vault may have any number of models ingested, or none yet.
 
 2. **Check whether it's already ingested** — does `wiki/models/<Model>/` and/or
    `raw/models/<Model>/` exist? Do this check yourself; don't ask the user. It decides
    first-time (Phase 3B) vs incremental-delta (Phase 3C) later. If the folder name doesn't
    already exist, confirm the exact display name with the user before creating it — match
-   the short-code convention already in use (`AAC`, `MJP`, `FSP 2.0`), not a full descriptive
-   name.
+   whatever short-code convention this vault's existing model folders already use (check
+   `raw/models/` and `wiki/models/`), not a full descriptive name.
 
-3. **Resolve a scraper shortcut.** Check `models.py`'s `MODELS` dict for a key whose entry has
-   `customer_id`, `workspace_id`, and `model_id` all present for this model.
+3. **Resolve a scraper shortcut.** Check `tools/models.py`'s `MODELS` dict for a key whose
+   entry has `customer_id`, `workspace_id`, and `model_id` all present for this model.
    - **Shortcut exists** → note the key and the model's exact folder name, go to Phase 1B.
-   - **No shortcut** (true today for AAC and MJP — only `fsp` is fully configured, and its
-     `models.py` display name is `"FSP"`, not the wiki's `"FSP 2.0"`) → run:
+   - **No shortcut yet** (expected for any model not already registered — `tools/models.py`
+     ships with an empty `MODELS` dict plus one commented-out example) → run:
      ```powershell
-     python scrape_model_data.py --list-models
+     python tools/scrape_model_data.py --list-models
      ```
      This logs in and calls the live Anaplan model-list API directly — no `models.py`
      shortcut needed for this step. It prints JSON: `model_name`, `model_id`,
@@ -94,8 +94,8 @@ to Phase 1 with the provided paths.
      Filter to candidates matching the requested name and **show them to the user for
      explicit confirmation** — the same model name can exist in more than one workspace.
    - Once confirmed, add `<PREFIX>_MODEL_ID=<model_id>` to `.env` (reuse a shared workspace
-     var like `CUSTOMER_ID`/`DEV_POLARIS` if it matches; otherwise ask the user what to call
-     the new one) and mirror the `fsp` entry in `models.py` with `customer_id`,
+     var if one already exists for this tenant/workspace; otherwise ask the user what to call
+     the new one) and mirror the example entry in `tools/models.py` with `customer_id`,
      `workspace_id`, `model_id`. Show the user what you're about to add before writing it —
      this is the first time this model becomes scriptable, worth a quick confirmation.
    - Proceed to Phase 1B with the new shortcut key.
@@ -104,36 +104,36 @@ to Phase 1 with the provided paths.
 
 ## Phase 1B — Snapshot before scraping (Path B only)
 
-The scraper overwrites each of its 13 target files in place — this vault does not keep dated
+The scraper overwrites each of its target files in place — this vault does not keep dated
 archive copies of raw CSVs ([[feedback_no_dated_raw_copies]]; this applies to the scraper path
 too). That means the "before" state must be captured before the scraper runs, or it's gone by
 the time you want to diff.
 
 1. If `raw/models/<Model Name>/` already exists, copy only the files whose names are in the
-   scraper's fixed 13-name target set (see `SCRAPE_MODEL_DATA.md` → "What it produces") into a
-   temp folder under the session's scratchpad directory. This is ephemeral diff input only —
-   never write it into `raw/`, and delete it once Phase 3C has applied the delta.
+   scraper's fixed target set for the mode you're about to run — 7 files by default, 15 with
+   `--full` (see `docs/SCRAPE_MODEL_DATA.md` → "How the three paths work" for exact names) —
+   into a temp folder under the session's scratchpad directory. This is ephemeral diff input
+   only — never write it into `raw/`, and delete it once Phase 3C has applied the delta.
 2. If the folder doesn't exist yet (true first-time ingest), skip this — there's nothing to
    diff against.
-3. Leave any file in that folder whose name is *not* in the 13-name set untouched and out of
-   scope (e.g. FSP 2.0's `Imports.csv`, `Import Data Sources.csv` — the scraper doesn't
-   produce these and never will).
+3. Leave any file in that folder whose name is *not* in the target set untouched and out of
+   scope (e.g. `Import Data Sources.csv` — the scraper doesn't produce this and never will).
 
 ## Phase 2B — Run the scraper
 
 ```powershell
-python scrape_model_data.py <shortcut> --name "<exact existing folder name>"
+python tools/scrape_model_data.py <shortcut> --name "<exact existing folder name>"
 ```
 
-Always pass `--name` set to the folder name already used under `raw/models/`/`wiki/models/`
-(e.g. `"FSP 2.0"`, not `"FSP"`) — a shortcut's own display name in `models.py` can differ from
-the wiki's folder name. Getting this wrong creates a second, wrong-named sibling folder
-instead of updating the existing one.
+Always pass `--name` set to the folder name already used under `raw/models/`/`wiki/models/` —
+a shortcut's own display name in `models.py` can differ from the wiki's folder name (e.g. a
+shortcut named `"ModelA"` might correspond to a wiki folder called `"ModelA 2.0"`). Getting this
+wrong creates a second, wrong-named sibling folder instead of updating the existing one.
 
-Read the script's own summary output — a ✅/✗ line per target file plus an `N/13 exported`
-count:
-- **All 13 succeeded** → every file in the 13-name set under `raw/models/<Model Name>/` is
-  now current.
+Read the script's own summary output — a ✅/✗ (or `ok`/`--`) line per target file plus a
+produced-file count (7 or 15 depending on mode):
+- **All targets succeeded** → every file in that mode's target set under
+  `raw/models/<Model Name>/` is now current.
 - **Some failed** → the failed targets' prior files (if any) are left untouched, not deleted.
   Treat those specific files as still reflecting their pre-scrape state, ingest the deltas for
   whatever did succeed, and say explicitly in the Phase 4 summary which targets didn't refresh
@@ -315,8 +315,8 @@ After every ingest (regardless of type), end with a structured summary in chat. 
 
 **Mode:** [General source | First-time model CSV | Incremental delta]
 **Batch:** [file(s) processed]
-**Scraper run** (Path B only): [N/13 exported; list any targets that failed and were left
-  at their pre-scrape state]
+**Scraper run** (Path B only): [N/7 or N/15 exported, depending on mode; list any targets
+  that failed and were left at their pre-scrape state]
 
 **Created:**
 - wiki/sources/... (source page)

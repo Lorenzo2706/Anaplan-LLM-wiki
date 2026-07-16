@@ -153,8 +153,8 @@ _DOTTED_REFERENCE_RE = re.compile(r"'([^']+)'\.(.+)$")
 def _parse_dotted_reference(obj: str):
     """Extract (module_name, line_item_name) from an Imports.csv Source/Target
     Object string's final path segment, e.g.
-    "Data Hub 2.0 / 'SYS 05. Date of Today'.Date MBH Master Data" ->
-    ("SYS 05. Date of Today", "Date MBH Master Data"). Module names routinely
+    "Data Hub 2.0 / 'SYS 05. Time Settings'.Current Period" ->
+    ("SYS 05. Time Settings", "Current Period"). Module names routinely
     contain periods (e.g. "SYS 05."), which is why only the quoted-module
     pattern is trusted - a whole-module reference like "SM 02. General
     Settings" has no quotes and correctly returns None.

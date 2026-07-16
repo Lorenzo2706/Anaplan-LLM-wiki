@@ -1,0 +1,111 @@
+,Local Controller,Local Controller (DB/TS),MJP Manager,KPI Controller,Read Only (RO),Check Access? (read if updated)
+MJP Versions L1,false,false,false,false,false,false
+MJP Versions L2,false,false,false,false,false,false
+User list,false,false,false,false,false,false
+SIP Planvarianten,false,false,false,false,false,false
+▶️ 𝗔𝗖𝗖𝗢𝗨𝗡𝗧𝗜𝗡𝗚 ◀️,false,false,false,false,false,false
+Account L12,false,false,false,false,false,false
+Account L12 Flat - IC,false,false,false,false,false,false
+▶️ 𝗢𝗥𝗚𝗔𝗡𝗜𝗭𝗔𝗧𝗜𝗢𝗡 𝗛𝗜𝗘𝗥𝗔𝗥𝗖𝗛𝗬 ◀️,false,false,false,false,false,false
+Entiteit L3,false,false,false,false,false,false
+Afdelingsgroep L4,false,false,false,false,false,false
+Afdeling L5,false,false,false,false,false,false
+Subafdeling L6,false,false,false,false,false,false
+MJP Kostenplaats L7,false,false,false,false,false,false
+Dummy Afdelingen,false,false,false,false,false,false
+Business Controllers,false,false,false,false,false,false
+▶️ 𝗦𝗜𝗣 𝗛𝗜𝗘𝗥𝗔𝗥𝗖𝗛𝗬◀️,false,false,false,false,false,false
+SIP Werkstroom L1,false,false,false,false,false,false
+SIP Tafel L2,false,false,false,false,false,false
+SIP Thema L3,false,false,false,false,false,false
+SIP Thema L3+,false,false,false,false,false,false
+SIP Thema L3++,true,true,true,false,false,false
+SIP Thema L3 MJP verrijking,false,false,false,false,false,false
+SIP Activiteit L4,false,false,false,false,false,false
+SIP Activiteit L4 +,true,true,true,false,false,false
+SIP Subactiviteit L5,false,false,false,false,false,false
+SIP Subactiviteit L6,false,false,false,false,false,false
+▶️ 𝗟𝗢𝗔𝗗 𝗟𝗜𝗦𝗧𝗦 ◀️,false,false,false,false,false,false
+#Load SPIN Waardes,false,false,false,false,false,false
+#Load SAP BPC,false,false,false,false,false,false
+#LOAD SIP,false,false,false,false,false,false
+#Load Tafel/Thema SIP,false,false,false,false,false,false
+#Load Subactiviteit SIP,false,false,false,false,false,false
+#Load Grouping L12 accounts,false,false,false,false,false,false
+#Load L6 Subafdeling,false,false,false,false,false,false
+#Load L7 Kostenplaats,false,false,false,false,false,false
+#Load SPIN KPIs,false,false,false,false,false,false
+#LOAD SIP Thema's L3++,false,false,false,false,false,false
+#Load loonkosten,false,false,false,false,false,false
+▶️ 𝗖𝗢𝗡𝗖𝗔𝗧𝗘𝗡𝗔𝗧𝗜𝗢𝗡◀️,false,false,false,false,false,false
+Uni-code COEA-MJP-ACC,true,true,true,false,false,false
+Activiteit_Kostenplaats,true,true,true,false,false,false
+▶️ KPI’s ◀️,false,false,false,false,false,false
+SPIN - KPI,true,true,false,false,false,false
+SPIN - YTD Berekening,false,false,false,false,false,false
+SPIN - Groepering L1,false,false,false,false,false,false
+SPIN - Categorie L2,false,false,false,false,false,false
+SPIN - Organisatie,false,false,false,false,false,false
+SPIN - eenheden,false,false,false,false,false,false
+KPI_Afdeling,true,true,false,false,false,false
+▶️ 𝗢𝗛𝗧𝗘𝗥 𝗟𝗜𝗦𝗧𝗦◀️,false,false,false,false,false,false
+Allocation Method (% / Q / €),false,false,false,false,false,false
+COEA,false,false,false,false,false,false
+COEA incl bak,false,false,false,false,false,false
+Directeuren,false,false,false,false,false,false
+DB/TS items,false,false,false,false,false,false
+Directe toeslagen niveau's,false,false,false,false,false,false
+Drivers GBR,false,false,false,false,false,false
+Drivers MJP Euros,false,false,false,false,false,false
+Drivers MJP FTE's,false,false,false,false,false,false
+Eenheid,false,false,false,false,false,false
+FTE Type L1,false,false,false,false,false,false
+FTE Type L2,false,false,false,false,false,false
+F1 Functiegroepen,false,false,false,false,false,false
+F2 Prestatiesoorten,false,false,false,false,false,false
+Gemeente,false,false,false,false,false,false
+IAS16 kosten,false,false,false,false,false,false
+IC Code,false,false,false,false,false,false
+Import Scenario,false,false,false,false,false,false
+Frequentie,false,false,false,false,false,false
+IP Kenmerk,false,false,false,false,false,false
+IKT items,false,false,false,false,false,false
+Inflatie excl/incl,false,false,false,false,false,false
+Intercompany/Leenmonteur,false,false,false,false,false,false
+Kostensoort,false,false,false,false,false,false
+KPI's,true,true,true,false,false,false
+KPI's - RGS type,false,false,false,false,false,false
+KPI's - Excel Code,false,false,false,false,false,false
+KPI's - SPIN Code (SIM),false,false,false,false,false,false
+KPI's - Soort,false,false,false,false,false,false
+KPI's - KPI of Groepering,false,false,false,false,false,false
+KPI PPT Paging,false,false,false,false,false,false
+OPEX CAPEX,false,false,false,false,false,false
+OPEX Type,false,false,false,false,false,false
+Portefeuillehouders,false,false,false,false,false,false
+Product,false,false,false,false,false,false
+Provincie,false,false,false,false,false,false
+RES Regio,false,false,false,false,false,false
+Regio,false,false,false,false,false,false
+Rekeningcategorie,false,false,false,false,false,false
+Risico & Kansen items,true,true,true,false,false,false
+Risico & Kansen soort,true,true,true,false,false,false
+Risico & Kansen kostensoorten,false,false,false,false,false,false
+Technische staat,false,false,false,false,false,false
+Soort (SAP BPC),false,false,false,false,false,false
+Strategische doelen,false,false,false,false,false,false
+Strategische initiatieven,false,false,false,false,false,false
+User Filters,false,false,false,false,false,false
+UMDT Items,false,false,false,false,false,false
+Uurtarieven niveau's,false,false,false,false,false,false
+▶️ Technical list ◀️,false,false,false,false,false,false
+Support list dep,false,false,false,false,false,false
+Dummy COEA,false,false,false,false,false,false
+Dummy Total,false,false,false,false,false,false
+Dummy Tijd,false,false,false,false,false,false
+Dummy Maand,false,false,false,false,false,false
+Dummy vandaag,false,false,false,false,false,false
+Dummy Period,false,false,false,false,false,false
+Support list #1,false,false,false,false,false,false
+Support list #10,false,false,false,false,false,false
+Support list #50,false,false,false,false,false,false

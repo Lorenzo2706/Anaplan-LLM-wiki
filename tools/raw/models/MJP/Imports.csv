@@ -1,0 +1,164 @@
+﻿,Import Type,Source (file/view id),Source File Name
+⠀⠀⠀       ◼️ MASTER DATA ACTIONS,HIERARCHY_DATA,113000000061,.
+DH.00 Load Entiteiten L3 from IM in DH,HIERARCHY_DATA,,
+DH.01 Load Afdelingsgroep L4 from IM in DH,HIERARCHY_DATA,,
+DH.02 Load Afdeling L5 from IM in DH,HIERARCHY_DATA,,
+DH.14 Load Account  L12 from IM in DH,HIERARCHY_DATA,,
+DH.15 Load Parameter data in DA 04 Parameters,MODULE_DATA,,
+DH.16 Load L IC Code from L in DH,HIERARCHY_DATA,,
+DH.17 Load Afdeling L5 SS Staven,HIERARCHY_DATA,,
+DH.18 Load Afdeling L5 SS OPS,HIERARCHY_DATA,,
+DH.19 Load Afdeling L5 SS AGK,HIERARCHY_DATA,,
+DH.20 Load Afdeling L5 SS OPS (NON SIP),HIERARCHY_DATA,,
+DH.21 Load Afdeling L5 SS GM1000,HIERARCHY_DATA,,
+DH.22 Load SAP BPC data from data hub,MODULE_DATA,,
+01.01 Load L #Load Tafel/Thema SIP from M LO 04 [Clear LL],HIERARCHY_DATA,,
+01.02 Load L #Load Tafel/Thema SIP from SIP M EX 08,HIERARCHY_DATA,,
+01.03 Create L SIP Werkstroom L1 from M LO 04,HIERARCHY_DATA,,
+01.04 Create L SIP Tafel L2 from M LO 04,HIERARCHY_DATA,,
+01.05 Create L Product from M LO 04,HIERARCHY_DATA,,
+01.06 Create L SIP Thema L3 from M LO 04,HIERARCHY_DATA,,
+01.07 Create L SIP Activiteit L4 from M LO 04,HIERARCHY_DATA,,
+01.08 Create L SIP Activiteit L4 + from M IM 34,HIERARCHY_DATA,,
+01.09 Load M SIP Data & SIP Afdeling from SIP M EX 10,MODULE_DATA,,
+01.0x Load L #Load Subactiviteit SIP from SIP M EX 09,HIERARCHY_DATA,,
+01.x Create L Subactiviteit from M LO 05,HIERARCHY_DATA,,
+01.x Create L Subactiviteit L6 from M LO 05,HIERARCHY_DATA,,
+01.x Create L Eenheid from M LO 05,HIERARCHY_DATA,,
+KOS 02. Create #L7 Kostenplaats from DH (IM 08.2),HIERARCHY_DATA,,
+KOS 03. Load data in L07 Kostenplaats from DH (IM 08.2),MODULE_DATA,,
+KOS 04. Create Afdeling L5,HIERARCHY_DATA,,
+KOS 05. Update Afdeling L5,HIERARCHY_DATA,,
+KOS 06. Create Subafdeling L6,HIERARCHY_DATA,,
+KOS 07. Update Subafdeling L6,HIERARCHY_DATA,,
+KOS 08. Create Kostenplaats L7,HIERARCHY_DATA,,
+KOS 09. Update MJP Kostenplaats L7,HIERARCHY_DATA,,
+KOS 10. Update all Kostenplaats Display Names,HIERARCHY_DATA,,
+02.03 LO 07 Active SS of Kostenplaats L7,MODULE_DATA,,
+02.04 Load into MJP Kostenplaats list - SS Active,HIERARCHY_DATA,,
+02.05 Update MJP Kostenplaats L7 (Lo 07 ),HIERARCHY_DATA,,
+02.06 Account L12 active SS creation from DH,HIERARCHY_DATA,,
+03.01 Account L12 Grouping from LO 05 mapping,MODULE_DATA,,
+03.02 Account L12 DB/TS ss from IM 01a,HIERARCHY_DATA,,
+⠀⠀⠀       ◼️ MJP ACTIONS,HIERARCHY_DATA,113000000013,SIP TEST .csv
+SS.01 Update SS L12 IC,HIERARCHY_DATA,,
+SS.02 Update SS L3 IC,HIERARCHY_DATA,,
+SS.03 Update SS DB/TS,HIERARCHY_DATA,,
+SS.04 Update SS IC,HIERARCHY_DATA,,
+SS.05 Update SS DB/TS,HIERARCHY_DATA,,
+SS.06 Update SS Budget afdeling,HIERARCHY_DATA,,
+SS.07 Update SS Active Account L12,HIERARCHY_DATA,,
+SS.08 Update SS Budget Account L12,HIERARCHY_DATA,,
+SS.09 Update SS Active Kostenplaats L7,HIERARCHY_DATA,,
+SS.10 Update SS Budget Kostenplaats L7,HIERARCHY_DATA,,
+SS.11 Create SS - Account L12 - Allocation,HIERARCHY_DATA,,
+SS.12 Clear SS budget subset lineitem,MODULE_DATA,,
+SS.13 Bulkload Budget SS kostenplaatsen,MODULE_DATA,113000000452,Load kostenplaatsen budget IM 62..csv
+SIP.01 Load totaal Plan SIP From SIP,MODULE_DATA,,
+SIP.02 Planvariant IM 04 to list Planvarianten,HIERARCHY_DATA,,
+SIP.03 Load SIP E/G split from IP 09,MODULE_DATA,,
+SPP.01 Update LO 03 from SPP EX 01,MODULE_DATA,,
+DATE.01 MAIN datum,MODULE_DATA,,
+DATE.02 BACKUP datum,MODULE_DATA,,
+DATE.03 Datum proces run Import SIP,MODULE_DATA,,
+DATE.04 Datum proces run Update Organisatie Structuur,MODULE_DATA,,
+DATE.05 Datum proces run Update Parameters,MODULE_DATA,,
+DATE.06 Datum proces run Update Account lijst,MODULE_DATA,,
+DATE.07 Datum proces run from Update Hierarchies,MODULE_DATA,,
+UNI.01 Create COEA-KP-ACC list,HIERARCHY_DATA,,
+UNI.02 COEA-KP-ACC Information to IM 20,MODULE_DATA,,
+└ IP 10a. Verdeling naar gr from MJP - Dev / └ IP 10a. Verde,MODULE_DATA,,
+Account L12 from TEST Code fix.csv,HIERARCHY_DATA,113000000368,TEST Code fix.csv
+SIP Subactiviteit L5 from MJP - Dev / 'LO 05 Load Subactivit,HIERARCHY_DATA,,
+Dummy IC L12 from MJP - Dev / '└ IM 01a. Account L12 - used',HIERARCHY_DATA,,
+IP 05. Seizoenspatronen from MJP - DEV / '└ IP 10d. Calculat,MODULE_DATA,,
+SIP Tafel L2 from SIP Tafel L2.csv,HIERARCHY_DATA,113000000409,SIP Tafel L2.csv
+KPI.01 Import KPI Data to L #Load SPIN KPI's,HIERARCHY_DATA,113000000410,SPIN gegevens.csv
+KPI.02 Update L SPIN - KPI from M LO 09,HIERARCHY_DATA,,
+KPI.03 Update L SPIN - YTD Berekening from M LO 09,HIERARCHY_DATA,,
+KPI.04 Update L SPIN - Groepering L1 from M LO 09,HIERARCHY_DATA,,
+KPI.05 Update L SPIN - Categorie L2 from M LO 09,HIERARCHY_DATA,,
+KPI.06 Update L SPIN - Organisatie from M LO 09,HIERARCHY_DATA,,
+KPI.07 Update L KPI_Afdeling from M LO 09,HIERARCHY_DATA,,
+KPI.08 Subload M IM 42. from M LO 09,MODULE_DATA,,
+KPI.09 Update L SPIN - KPI from M IP 22,HIERARCHY_DATA,,
+KPI.10 Update L KPI_Afdeling from M IP 22,HIERARCHY_DATA,,
+KPI.11 Update M IM43 from M IP 22,MODULE_DATA,,
+KPI.12 Blank out KPI input,MODULE_DATA,,
+KPI 13. Load boolean monitorings KPI.csv,MODULE_DATA,113000000476,KPI load monitorings KPI.csv
+KPI 14. Load boolean Strategische KPI.csv,MODULE_DATA,113000000475,KPI Strategische KPI.csv
+KPI 15. Load boolean Focus KPI.csv,MODULE_DATA,113000000474,KPI Focus KPI.csv
+KPI 16. Load boolean meerjarenplan KPI.csv,MODULE_DATA,113000000460,KPI load meerjarenplan.csv
+KPI 17. Load boolean Financieringsplan KPI.csv,MODULE_DATA,113000000459,KPI load Financieringsplan.csv
+KPI 18. Load boolean LTIP KPI.csv,MODULE_DATA,113000000456,KPI load LTIP.csv
+KPI 19. Load boolean afdeling bsc KPI.csv,MODULE_DATA,113000000445,KPI load afdeling bsc.csv
+KPI 20. Load boolean keten bsc KPI.csv,MODULE_DATA,113000000444,KPI load keten bsc.csv
+KPI 21. Load boolean jaarverslag KPI.csv,MODULE_DATA,113000000443,KPI load jaarverslag.csv
+KPI 22. Load boolean Eenheid KPI.csv,MODULE_DATA,113000000458,KPI load Eenheid.csv
+KPI 23. Load boolean bsc groep KPI.csv,MODULE_DATA,113000000442,KPI load bsc groep.csv
+KPI 24. Load boolean jaarplan KPI.csv,MODULE_DATA,113000000477,KPI load jaarplan.csv
+KPI 26. KPI Afdeling load from LO 09,MODULE_DATA,,
+#Load SPIN Waardes from Upload - SPIN Waardes.csv,HIERARCHY_DATA,113000000502,Upload - SPIN Waardes.csv
+DA 30a. Actuals/LE/Budget from ACBULE afdelingskosten load,MODULE_DATA,113000000478,ACBULE afdelingskosten load.csv
+DA 30b. Actuals/LE Input For from ACBULE formatie load.csv,MODULE_DATA,113000000482,ACBULE formatie load.csv
+DA 30c. Actuals/LE Input Tafel/ from ACBULE capex load.csv,MODULE_DATA,113000000479,ACBULE capex load.csv
+DA 30d. Actuals/LE Input OPEX from ACBULE opex load.csv,MODULE_DATA,113000000481,ACBULE opex load.csv
+DA 30e. Actuals/LE Input Exter from ACBULE extern load.csv,MODULE_DATA,113000000480,ACBULE extern load.csv
+DA 30f. Actuals/LE Input U from ACBULE UMDT Capex load.csv,MODULE_DATA,113000000483,ACBULE UMDT Capex load.csv
+DA 30f. Actuals/LE Input UM from ACBULE UMDT Opex load.csv,MODULE_DATA,113000000490,ACBULE UMDT Opex load.csv
+DA 30f. Actuals/LE Input  from ACBULE UMDT Extern load.csv,MODULE_DATA,113000000491,ACBULE UMDT Extern load.csv
+PK.01 Load Tarieven into LO10,MODULE_DATA,113000000422,LO 10. Load Tarieven personeel.csv
+PK.02 Update IP 10f from LO10,MODULE_DATA,,
+Users from User_testMJP.csv,USERS,113000000429,User_testMJP.csv
+L3+ 01. SIP Thema L3+ list creation from input,HIERARCHY_DATA,,
+L3+ 02. SIP Thema L3++ list creation from input,HIERARCHY_DATA,,
+L3+ 03. L3++ Delete input,MODULE_DATA,,
+L3+ 04. Create SIP Thema L3++ Extern,HIERARCHY_DATA,,
+MJP Kostenplaats L7 from Load kostenplaatsen budget IM 62..c,HIERARCHY_DATA,113000000452,Load kostenplaatsen budget IM 62..csv
+CA 32. Toeslag Indirect Subload,MODULE_DATA,,
+TMP Update IP 10a Eigen Invoer from IP 10a input.txt,MODULE_DATA,113000000496,IP 10a input.txt
+TMP Update IP 10c Overwrite? from IP 10d input.txt,MODULE_DATA,113000000498,IP 10d input.txt
+TMP Update IP 10d Overwrite waarde from IP 10d input.txt,MODULE_DATA,113000000498,IP 10d input.txt
+IP10. Update Cijfers,MODULE_DATA,,
+IM 43. KPI_Afdeling from SPIN Update - BC + Strategisch them,MODULE_DATA,113000000503,SPIN Update - BC + Strategisch thema.csv
+MA 61. Kostenplaats L7 mapping,MODULE_DATA,113000000506,Mapping kostenplaatsen L7 - kopie.csv
+ACKO01 Load to L Activiteit_Kostenplaats,HIERARCHY_DATA,,
+ACKO02 Load IM to IM Activiteit_Kostenplaats,MODULE_DATA,,
+SUB 02. #Load L6 Subafdeling from Data Hub( IM 07.3),HIERARCHY_DATA,,
+SUB 03. #Load into LO 06. from Data Hub( IM 07.3),MODULE_DATA,,
+SUB 04. Update Subafdeling L6 list,HIERARCHY_DATA,,
+TEMP IP 11. IC input update account,MODULE_DATA,,
+Prestatiesoorten import from DH IM20.1,HIERARCHY_DATA,,
+TEMP Send inputs from IP 10a to IP 10a NEW,MODULE_DATA,,
+TEMP Send inputs from IP 10 to IP 10 NEW,MODULE_DATA,,
+TEMP Send inputs from MA 15 to MA 15 NEW,MODULE_DATA,,
+TEMP Send inputs from CA 11 to CA 11 NEW,MODULE_DATA,,
+TEMP Send inputs from IP 10F to IP 10F NEW,MODULE_DATA,,
+TEMP Send inputs from IP 10F NEW to IP10x1,MODULE_DATA,,
+TEMP Copy input to new LI IP 11,MODULE_DATA,,
+TEMP create new KPI_Afdeling codes - step 1,HIERARCHY_DATA,,
+TEMP update new KPI_Afdeling codes - step 2,HIERARCHY_DATA,,
+Subload Totaal IP 10x2. NEW,MODULE_DATA,,
+Subload Totaal IP 10a. NEW,MODULE_DATA,,
+TEMP Send inputs from MA 51 to MA 51 Version,MODULE_DATA,,
+TEMP Send inputs from MA 61 to MA 61 Version,MODULE_DATA,,
+IP 05 - Load previous version,MODULE_DATA,,
+Load productieve uren from SRT EX 500.1,MODULE_DATA,,
+LOO 01. Loonkosten - create #Load loonkosten from csv.,HIERARCHY_DATA,113000000547,Load employee costs per afd or subafd.csv
+LOO 02. Import loonkosten data from csv.,MODULE_DATA,113000000547,Load employee costs per afd or subafd.csv
+LOO 03. Subload loonkosten per Afdeling from LO 12.1,MODULE_DATA,,
+LOO 04. Subload loonkosten per Subafdeling from LO 12.2,MODULE_DATA,,
+Import into KPI_Afdeling,HIERARCHY_DATA,,
+◼️ RUN IN PROD TO ENABLE CLEANUP,HIERARCHY_DATA,,
+IM 13. Afdeling L5 from MJP - PROD / MA 05. Mapping Afdeling,MODULE_DATA,,
+IM 19. COEA from MJP - PROD / MA 09. Mapping OPEX/CAPEX en C,MODULE_DATA,,
+IM 33. Rekeningcategorie from MJP - PROD / MA 10. Kostencate,MODULE_DATA,,
+IM 04. Entiteit from MJP - PROD / MA 14. Mapping IC code en,MODULE_DATA,,
+TEMP Update IM 01 Overige personeelskosten,MODULE_DATA,113000000571,IM 01. Account L12.csv
+TEMP Update IP 34,MODULE_DATA,113000000575,IP 34. Personeelskosten naar grootboekrekening (1).csv
+TEMP Update CA 25,MODULE_DATA,113000000577,CA 25. Uren uitvoeringskosten (1).csv
+TEMP Update IM 44,MODULE_DATA,113000000578,IM 44 LIS (CA 24) Kostencategorieen voor Uurtariefen.csv
+TEMP Update IM 45,MODULE_DATA,113000000579,IM 45 LIS (CA 24) Kostencategorieen voor Uurtariefen no .csv
+TEMP Upload to IP 11,MODULE_DATA,113000000580,IP 11. IC & Leenmonteurs input (2).csv
+Subafdeling L6 from MJP - Dev / 'IM 05c. Subafdeling'.'IM 05,HIERARCHY_DATA,,
+Subafdeling L6 from MJP - Dev / 'IM 05c. Subafdeling'.'IM ~1,HIERARCHY_DATA,,

@@ -1,0 +1,10 @@
+,Sources,Imports,Mapped To
+DATA HUB (STEDIN) / Data Hub 2.0,3,1,"{""workspaceId"":""8a81b0106ee24939016ff66823f53a41"",""workspaceName"":""DATA HUB (STEDIN)"",""modelId"":""B097633FDB5245F49152F4572B3D610C"",""modelName"":""Data Hub 2.0""}"
+MJP - PROD / MJP - PROD,4,4,"{""workspaceId"":""312bc149b189426e96a5d1ab925de5b6"",""workspaceName"":""MJP - PROD"",""modelId"":""03B952520AA24713B9EBE19EA8975289"",""modelName"":""MJP - PROD""}"
+MJP - PROD / Q - Data Hub,3,3,STEDIN - DATA HUB / Data Hub
+MJP - PROD / SIP - DEV,5,3,SIP - PROD / SIP - PROD
+MJP - PROD / SPP - DEV,1,1,SPP - PROD / SPP - PROD
+MJP - UAT / MJP - UAT,1,0,MJP - PROD / MJP - PROD
+SIP - PROD / SIP - Production,4,3,SIP - PROD / SIP - PROD
+Stedin - Data Hub / Q - Datahub,27,15,STEDIN - DATA HUB / Data Hub
+WFP - UAT (P) / SRT - UAT,1,1,"{""workspaceId"":""02efbd510ef240f5afbfca1f64cc704a"",""workspaceName"":""WFP - UAT (P)"",""modelId"":""231A671A06614EFFA309ECC76C30AACE"",""modelName"":""SRT - UAT""}"

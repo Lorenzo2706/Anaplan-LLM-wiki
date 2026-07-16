@@ -13,3 +13,4 @@
 /UI
 __pycache__/
 /docs/superpowers
+/tools/models.py

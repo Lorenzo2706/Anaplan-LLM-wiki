@@ -8,8 +8,8 @@ description: >
   wiki pages and raw CSV export, then assembling the results into a
   validated .docx with explicit placeholders for anything unconfirmed. Use
   this skill whenever the user asks to document, draft documentation for,
-  write up, or create a Word/docx deliverable for any Anaplan model (AAC,
-  FSP 2.0, MJP, or a newly ingested one) - even if they don't mention
+  write up, or create a Word/docx deliverable for any Anaplan model in this
+  vault (whether already ingested or newly added) - even if they don't mention
   chapters, DISCO, or Word explicitly. Also trigger when they ask for
   onboarding material, a model handbook, a build-spec write-up, or want an
   existing model doc "redrafted"/"updated" to match a reference document's
@@ -77,9 +77,10 @@ Appendix B – Model Scheme                            [fixed]
 ```
 
 If the user gives you a different outline explicitly, use theirs instead -
-this one is the sensible default this vault has converged on (it's what
-MBH's own documentation uses, and what AAC's was redrafted to match), not a
-hard requirement. Whatever outline you use, keep every heading's numeric
+this one is the sensible default this vault has converged on (it's the house
+style prior model docs in this vault have used, and that others were
+redrafted to match), not a hard requirement. Whatever outline you use, keep
+every heading's numeric
 prefix intact in the research agents' output - see Step 2, it's load-bearing
 for the assembly step, not cosmetic.
 

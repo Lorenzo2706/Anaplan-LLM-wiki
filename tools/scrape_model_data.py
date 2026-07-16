@@ -1,27 +1,37 @@
 """
-scrape_model_data_api.py
-------------------------
-API-driven model-settings exporter — the fast alternative to the Selenium-driven
-:mod:`scrape_model_data`. Retrieves every file by an Anaplan HTTP API call; the
-browser is used only to log in and hold the session (no Dojo UI navigation).
+scrape_model_data.py
+---------------------
+Merged Anaplan model-settings exporter. Default mode retrieves most files through
+Anaplan HTTP APIs; the browser is used for login and the few grids that still
+require the model-settings UI.
 
 Why this exists
 ---------------
-`scrape_model_data.py` drives the model-settings Dojo UI grid-by-grid (navigate
+The pure-Selenium fallback drives the model-settings Dojo UI grid-by-grid (navigate
 nested iframes → click nav/sub-tab → Export… → Run Export → wait for a CSV
 download), 13 times per model. That is slow. This module pulls the same data
 from Anaplan HTTP APIs instead:
 
-  • **7 files via the REST API v2** (`/2/0/models/{id}/...`) as JSON over plain
+  • **5 files via the REST API v2** (`/2/0/models/{id}/...`) as JSON over plain
     `requests` — Line Items (rich: formula/format/applies-to/summary/cell-count/
-    referenced-by), Modules, Versions, General Lists, Actions, Imports, Views.
+    referenced-by), Versions, Actions, Imports, Views.
+  • **2 files via the Selenium model-settings UI export** — Modules and General
+    Lists. The REST API returns these two too sparse to use (Modules: id+name
+    only, so every stat/metadata column is blank; General Lists: no Top Level,
+    Parent Hierarchy, or dependency-graph "Referenced in…" columns), and the
+    classic core-webapp API can't drive them reliably (the client references
+    open grids by view index and the UI export is an un-interceptable form
+    download, so no dependable viewDefinition template exists — a wrong template
+    silently exports the wrong grid). The Selenium export is byte-for-byte
+    identical to Anaplan's own export, so these two core files are always correct.
   • **8 legacy grids via the classic core-webapp API** (`--full`) — Line Item
     Subsets, Time Ranges, Source Models, Roles + Roles Modules/Versions/Lists/
     Actions. These have no REST endpoint (they live in the classic core engine),
     but the engine's own HTTP protocol is driven directly — jsonrpc
     VIEW_REQUEST_SET → PROGRESS → servlet?taskType=export — via fetch() inside the
     core-webapp iframe. No UI clicking. See the _LEGACY_TEMPLATES block below for
-    the mechanism.
+    the mechanism. A legacy grid that fails this path falls back to
+    this script's UI export path for that one grid.
 
 Why the browser is still needed for login
 ------------------------------------------
@@ -39,44 +49,48 @@ calls.
 
 Modes
 -----
-  default  → 7 REST-API files only (fast).
-  --full   → all 15 files (7 REST + 8 classic-API). A legacy grid that fails the
-             classic-API path falls back to the scrape_model_data UI export for
-             that one grid, so coverage never regresses.
+  default  → 7 fast files (5 REST + Modules & General Lists via UI export).
+  --full   → all 15 files (5 REST + Modules & General Lists via UI + 8 classic-
+             API). A legacy grid that fails the classic-API path falls back to
+             this script's UI export path for that one grid, so coverage
+             never regresses.
 
 Column fidelity: the produced CSVs reuse the exact blueprint column layout (first
-header cell blank, first data column = entity name). The 8 legacy files are byte-
-for-byte the same grids the UI exports (verified equal to the reference). Within
-the REST-derived Line Items.csv / Modules.csv, a few columns the REST API does
-not expose (Populated Cell Count, Memory Used, Calculation Complexity/Effort,
-Read/Write Access Driver, Users List, Parent, Code, Data Tags, Functional Area)
-are left blank. `wiki-data-ingestion` parses everything identically.
+header cell blank, first data column = entity name). Modules, General Lists, and
+the 8 legacy files are byte-for-byte the same grids the UI exports (verified equal
+to the reference). Within the REST-derived Line Items.csv, a few columns the REST
+API does not expose (Populated Cell Count, Memory Used, Calculation Complexity/
+Effort, Read/Write Access Driver, Users List, Parent, Code, Data Tags) are left
+blank. `wiki-data-ingestion` parses everything identically.
 
 Usage
 -----
-    python scrape_model_data_api.py fsp --name "FSP 2.0"            # 7 REST files
-    python scrape_model_data_api.py fsp --name "FSP 2.0" --full     # all 15 files
+    python tools/scrape_model_data.py modela --name "ModelA"             # 7 fast files
+    python tools/scrape_model_data.py modela --name "ModelA" --full      # all 15 files
+    python tools/scrape_model_data.py modela --name "ModelA" --ui-only   # pure UI fallback
 
 As a library:
 
-    from scrape_model_data_api import download_model_exports_api, download_model_exports_full
-    download_model_exports_full("fsp", out_dir=r"raw/models/FSP 2.0")
+    from scrape_model_data import download_model_exports_api, download_model_exports_full
+    download_model_exports_full("modela", out_dir=r"raw/models/ModelA")
 """
 
 import argparse
 import csv
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
+from glob import glob
 
 import requests
+from selenium.webdriver.common.by import By
 
-# import order matters — see scrape_model_data.py's note (scraper_ux loads .env).
+# import order matters: scraper_ux loads .env before models reads env-backed IDs.
 import scraper_ux
 import models
-import scrape_model_data as smd
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -89,6 +103,386 @@ API_UNAVAILABLE = [
     "Roles.csv", "Roles Modules.csv", "Roles Versions.csv",
     "Roles Lists.csv", "Roles Actions.csv",
 ]
+
+# Two blueprint grids that the REST API v2 delivers UNUSABLY sparse and that
+# cannot be pulled over the classic core-webapp API either (the client references
+# open grids by view index, and the UI export is a form-submit download — neither
+# exposes the grid's viewDefinition, so no reliable classic-API template exists;
+# a wrong template silently exports the wrong grid, which is unacceptable for
+# these core files). They are therefore ALWAYS produced via the proven Selenium
+# model-settings UI export (byte-for-byte identical to Anaplan's own export),
+# in both default and --full modes. Expressed as UI export
+# (nav_label, subtab_label, filename) targets.
+#   • Modules       — REST /modules returns id+name only, so every stat/metadata
+#                     column (Applies To, Time Scale, Cell Count, Referenced By,
+#                     …) came out blank.
+#   • General Lists — REST /lists lacks Top Level, Parent Hierarchy, and the
+#                     dependency-graph columns (Referenced in Applies To / as
+#                     Format / in Formula), which only the classic engine computes.
+UI_ONLY_TARGETS = [
+    ("Modules", "Modules", "Modules.csv"),
+    ("General lists", None, "General Lists.csv"),
+]
+
+EXPORT_TARGETS = [
+    ("Modules", "Modules", "Modules.csv"),
+    ("Modules", "Line Items", "Line Items.csv"),
+    ("Line item subsets", None, "Line Item Subsets.csv"),
+    ("General lists", None, "General Lists.csv"),
+    ("Versions", None, "Versions.csv"),
+    ("Time", "Time Ranges", "Time Ranges.csv"),
+    ("Actions", "Actions", "Actions.csv"),
+    ("Source models", None, "Source Models.csv"),
+    ("Users", "Roles", "Roles.csv"),
+    ("Users", "Roles -> Modules", "Roles Modules.csv"),
+    ("Users", "Roles -> Versions", "Roles Versions.csv"),
+    ("Users", "Roles -> Lists", "Roles Lists.csv"),
+    ("Users", "Roles -> Actions", "Roles Actions.csv"),
+]
+
+
+# ============================================================================
+#  Selenium model-settings UI helpers
+# ============================================================================
+
+def enter_shell(browser, timeout=25):
+    """default_content -> outer shell iframe. Left-nav lives here."""
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            browser.switch_to.default_content()
+            outer = (browser.find_elements(By.CSS_SELECTOR, 'iframe[data-testid="shell-content"]')
+                     or browser.find_elements(By.TAG_NAME, "iframe"))
+            if not outer:
+                time.sleep(0.5)
+                continue
+            browser.switch_to.frame(outer[0])
+            body = browser.execute_script("return document.body ? document.body.innerText : ''") or ""
+            if any(k in body for k in ("Modules", "General lists", "Versions")):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def enter_grid(browser, timeout=25):
+    """default -> outer shell iframe -> inner grid iframe. Toolbar/tabs/dialog live here."""
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            browser.switch_to.default_content()
+            outer = (browser.find_elements(By.CSS_SELECTOR, 'iframe[data-testid="shell-content"]')
+                     or browser.find_elements(By.TAG_NAME, "iframe"))
+            if not outer:
+                time.sleep(0.5)
+                continue
+            browser.switch_to.frame(outer[0])
+            inner = browser.find_elements(By.TAG_NAME, "iframe")
+            if not inner:
+                time.sleep(0.5)
+                continue
+            browser.switch_to.frame(inner[0])
+            if browser.execute_script("return !!document.querySelector('.dijitButtonText');"):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def click_visible(browser, text, timeout=8, contains_all=None):
+    """Click the first visible element whose normalized text matches."""
+    end = time.time() + timeout
+    if contains_all:
+        xp = "//*[self::span or self::div or self::button or @role='tab' or @role='button' or self::a]"
+    else:
+        xp = (f"//span[normalize-space()='{text}'] | //*[@role='button'][normalize-space()='{text}'] "
+              f"| //button[normalize-space()='{text}'] | //div[normalize-space()='{text}'] "
+              f"| //*[@role='tab'][normalize-space()='{text}']")
+    while time.time() < end:
+        for el in browser.find_elements(By.XPATH, xp):
+            try:
+                if not el.is_displayed():
+                    continue
+                t = " ".join((el.text or "").split())
+                if contains_all and not all(p in t for p in contains_all):
+                    continue
+                browser.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+                time.sleep(0.1)
+                try:
+                    el.click()
+                except Exception:
+                    browser.execute_script("arguments[0].click();", el)
+                return True
+            except Exception:
+                continue
+        time.sleep(0.3)
+    return False
+
+
+def _alnum(s):
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+def click_tab(browser, label, timeout=10):
+    """Click a Dojo grid sub-tab by label."""
+    want = _alnum(label)
+    xp = ("//*[@role='tab'] | //*[contains(@class,'tabLabel')] "
+          "| //*[contains(@class,'dijitTab')]")
+    end = time.time() + timeout
+    while time.time() < end:
+        for el in browser.find_elements(By.XPATH, xp):
+            try:
+                if not el.is_displayed():
+                    continue
+                if _alnum(el.text) == want:
+                    browser.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+                    time.sleep(0.1)
+                    try:
+                        el.click()
+                    except Exception:
+                        browser.execute_script("arguments[0].click();", el)
+                    return True
+            except Exception:
+                continue
+        time.sleep(0.3)
+    return False
+
+
+def _export_one_target(browser, download_dir, nav_label, subtab_label, out_filename):
+    """
+    Navigate to one (nav_label, subtab_label) grid and export it to CSV.
+    Returns {"ok": bool, "saved_path": str|None, "raw_name": str|None,
+             "error": str|None}. Never raises.
+    """
+    result = {"ok": False, "saved_path": None, "raw_name": None, "error": None}
+    tag = f"[{nav_label}" + (f" > {subtab_label}]" if subtab_label else "]")
+
+    def fail(msg):
+        result["error"] = msg
+        print(f"  {tag} failed: {msg}")
+        return result
+
+    try:
+        if not enter_shell(browser):
+            return fail("no shell")
+        if not click_visible(browser, nav_label, 10):
+            return fail("nav not found")
+        time.sleep(2)
+
+        if not enter_grid(browser):
+            return fail("no grid iframe")
+
+        if subtab_label:
+            if not click_tab(browser, subtab_label, 10):
+                return fail("subtab not found")
+            time.sleep(2)
+            enter_grid(browser, 10)
+
+        before = set(glob(os.path.join(download_dir, "*")))
+        if not click_visible(browser, "Export...", 10):
+            return fail("Export button not found")
+        time.sleep(3)
+        enter_grid(browser, 10)
+        if not click_visible(browser, "Run Export", 10):
+            return fail("Run Export not found")
+
+        downloaded = scraper_ux._wait_for_download(download_dir, before, timeout=90)
+        if not downloaded:
+            return fail("no download")
+
+        result["raw_name"] = os.path.basename(downloaded)
+        result["saved_path"] = downloaded
+        result["ok"] = True
+
+        try:
+            size = os.path.getsize(downloaded)
+            print(f"  {tag} downloaded '{result['raw_name']}' ({size} bytes)")
+        except OSError:
+            print(f"  {tag} downloaded '{result['raw_name']}'")
+
+        return result
+
+    except Exception as e:
+        return fail(f"unexpected error: {e}")
+
+
+def _resolve_model(model, name=None):
+    """
+    Resolve `model` (a models.MODELS shortcut key, or a raw model_id GUID)
+    into (model_id, model_name, workspace_id, customer_id).
+    """
+    configured = getattr(models, "MODELS", {})
+
+    if model in configured:
+        m = configured[model]
+        model_id = m.get("model_id")
+        workspace_id = m.get("workspace_id")
+        customer_id = m.get("customer_id")
+        model_name = name or m.get("name", model)
+        missing = [k for k, v in (
+            ("model_id", model_id), ("workspace_id", workspace_id),
+            ("customer_id", customer_id),
+        ) if not v]
+        if missing:
+            raise ValueError(
+                f"models.MODELS['{model}'] is missing {missing}; check your .env "
+                f"entries for this shortcut."
+            )
+        return model_id, model_name, workspace_id, customer_id
+
+    raise ValueError(
+        f"'{model}' is not a configured shortcut in models.MODELS "
+        f"({list(configured.keys())}). Raw model_id lookups need a workspace "
+        f"ID that cannot be safely inferred; please add a shortcut entry to "
+        f"models.py with customer_id, workspace_id, and model_id, then pass "
+        f"its key here."
+    )
+
+
+def _build_config():
+    environment = os.getenv("ANAPLAN_ENVIRONMENT", "eu2a")
+    main_url = scraper_ux.ANAPLAN_URLS.get(environment, scraper_ux.ANAPLAN_URLS["eu2a"])
+    use_sso = os.getenv("ANAPLAN_USE_SSO", "false").strip().lower() in ("1", "true", "yes")
+    return {
+        "main_url": main_url,
+        "username": os.getenv("ANAPLAN_USERNAME", ""),
+        "password": os.getenv("ANAPLAN_PASSWORD", ""),
+        "use_basic_auth": not use_sso,
+        "output_folder": tempfile.gettempdir(),
+    }
+
+
+def list_available_models():
+    """
+    Log in and fetch every model visible to this account via the live Anaplan
+    API, independent of models.MODELS shortcuts.
+    """
+    config = _build_config()
+    download_dir = tempfile.mkdtemp(prefix="anaplan_list_models_")
+    browser = None
+    try:
+        browser = scraper_ux._create_browser(download_dir)
+        scraper_ux.login(browser, config)
+
+        main_url = config["main_url"]
+        data = scraper_ux.api_get(
+            browser,
+            f"{main_url}/a/springboard-platform-gateway-service/models?limit=50000&offset=0",
+        )
+        items = data.get("items", []) or []
+
+        out = []
+        for m in items:
+            ws_guid = m.get("CurrentWorkspaceGuid") or m.get("WorkspaceGuid", "")
+            customer = m.get("CustomerGuid") or m.get("TenantGuid", "")
+            if not customer and ws_guid:
+                try:
+                    ws_resp = scraper_ux.api_get(browser, f"{main_url}/1/3/workspaces/{ws_guid}")
+                    customer = ws_resp.get("workspace", {}).get("customerId", "")
+                except Exception:
+                    pass
+            out.append({
+                "model_name": m.get("ModelName"),
+                "model_id": m.get("ModelGuid"),
+                "workspace_name": m.get("CurrentWorkspaceName") or m.get("WorkspaceName") or "Unknown workspace",
+                "workspace_id": ws_guid,
+                "customer_id": customer,
+            })
+        out.sort(key=lambda m: (m["workspace_name"] or "", m["model_name"] or ""))
+        return out
+    finally:
+        if browser is not None:
+            try:
+                browser.quit()
+            except Exception:
+                pass
+        shutil.rmtree(download_dir, ignore_errors=True)
+
+
+def download_model_exports(model, out_dir=None, headless_download_dir=None, name=None):
+    """
+    Pure-Selenium fallback: export all 13 model-settings grids through the UI.
+    """
+    model_id, model_name, workspace_id, customer_id = _resolve_model(model, name=name)
+
+    if out_dir is None:
+        out_dir = os.path.join(REPO_ROOT, "raw", "models", model_name)
+    os.makedirs(out_dir, exist_ok=True)
+
+    download_dir = headless_download_dir or tempfile.mkdtemp(prefix="anaplan_scrape_")
+    own_download_dir = headless_download_dir is None
+
+    config = _build_config()
+    base = config["main_url"].rstrip("/")
+    settings_url = (
+        f"{base}/a/modeling/customers/{customer_id}/workspaces/{workspace_id}"
+        f"/models/{model_id}/model-settings"
+    )
+
+    results = {}
+    browser = None
+
+    try:
+        print(f"\n{'=' * 70}")
+        print(f"  Anaplan pure-UI model export - {model_name}")
+        print(f"{'=' * 70}")
+        print(f"  Settings URL : {settings_url}")
+        print(f"  Output dir   : {out_dir}\n")
+
+        browser = scraper_ux._create_browser(download_dir)
+        browser.set_script_timeout(120)
+
+        scraper_ux.login(browser, config)
+
+        print("  Opening model-settings shell...")
+        browser.get(settings_url)
+
+        if not enter_shell(browser, timeout=30):
+            raise RuntimeError(
+                "Could not enter the model-settings iframe after navigating "
+                "to the settings URL; check the URL/credentials/model IDs."
+            )
+
+        for nav_label, subtab_label, out_filename in EXPORT_TARGETS:
+            grid_result = _export_one_target(
+                browser, download_dir, nav_label, subtab_label, out_filename
+            )
+
+            if grid_result["ok"]:
+                dest_path = os.path.join(out_dir, out_filename)
+                try:
+                    if os.path.exists(dest_path):
+                        os.remove(dest_path)
+                    shutil.move(grid_result["saved_path"], dest_path)
+                    grid_result["saved_path"] = dest_path
+                except Exception as e:
+                    grid_result["ok"] = False
+                    grid_result["error"] = f"downloaded but failed to move file: {e}"
+                    print(f"    could not move to {dest_path}: {e}")
+
+            results[out_filename] = grid_result
+
+    finally:
+        if browser is not None:
+            try:
+                browser.quit()
+            except Exception:
+                pass
+        if own_download_dir:
+            shutil.rmtree(download_dir, ignore_errors=True)
+
+    ok_count = sum(1 for r in results.values() if r["ok"])
+    print(f"\n{'=' * 70}")
+    print(f"  {ok_count}/{len(EXPORT_TARGETS)} exported")
+    for out_filename, r in results.items():
+        marker = "ok" if r["ok"] else "--"
+        detail = r["saved_path"] if r["ok"] else r["error"]
+        print(f"    {marker} {out_filename:<22} {detail}")
+    print(f"{'=' * 70}\n")
+
+    return results
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -179,14 +573,6 @@ LINE_ITEM_HEADER = [
     "Referenced By", "Module Name",
 ]
 
-MODULE_HEADER = [
-    "", "Functional Area", "Applies To", "Time Scale", "Time Range", "Versions",
-    "Breakback", "Users List", "Cell Count", "Populated Cell Count", "Memory Used",
-    "Notes", "Read Access Driver", "Write Access Driver", "Data Tags", "Managed By",
-    "Referenced By", "Used in Dashboards", "Line Items",
-]
-
-
 def build_line_items(sess, base, model_id):
     body = _get(sess, f"{base}/2/0/models/{model_id}/lineItems?includeAll=true")
     items = _list_field(body)
@@ -217,38 +603,7 @@ def build_line_items(sess, base, model_id):
             _names(li.get("referencedBy")),
             li.get("moduleName", ""),
         ])
-    return LINE_ITEM_HEADER, rows, items
-
-
-def build_modules(sess, base, model_id, line_items):
-    """Modules endpoint only gives id/name; enrich each module with the list of
-    its line items (from the lineItems payload). Stat columns stay blank."""
-    body = _get(sess, f"{base}/2/0/models/{model_id}/modules")
-    mods = _list_field(body)
-    # module name -> ordered list of its line item names
-    li_by_module = {}
-    for li in line_items:
-        li_by_module.setdefault(li.get("moduleName", ""), []).append(li.get("name", ""))
-    rows = []
-    for m in mods:
-        name = m.get("name", "")
-        li_names = li_by_module.get(name, [])
-        rows.append([
-            name,
-            "",                                  # Functional Area — n/a
-            "", "", "", "",                      # applies to / time scale / range / versions — n/a at module level
-            "",                                  # Breakback — n/a
-            "",                                  # Users List — n/a
-            "", "", "",                          # cell/populated/memory — n/a
-            "",                                  # Notes — n/a
-            "", "",                              # read/write driver — n/a
-            "",                                  # Data Tags — n/a
-            "",                                  # Managed By — n/a
-            "",                                  # Referenced By — n/a
-            "",                                  # Used in Dashboards — n/a
-            "; ".join(li_names),                 # Line Items (derived) ✓
-        ])
-    return MODULE_HEADER, rows
+    return LINE_ITEM_HEADER, rows
 
 
 def build_versions(sess, base, model_id):
@@ -269,31 +624,6 @@ def build_versions(sess, base, model_id):
             ef.get("periodText", "") if isinstance(ef, dict) else "",
             et.get("periodText", "") if isinstance(et, dict) else "",
             "",                                  # Notes — n/a
-        ])
-    return header, rows
-
-
-def build_general_lists(sess, base, model_id):
-    body = _get(sess, f"{base}/2/0/models/{model_id}/lists")
-    lists = _list_field(body)
-    header = ["", "Item Count", "Has Selective Access", "Numbered",
-              "Production Data", "Managed By", "Subsets", "Properties"]
-    rows = []
-    for l in lists:
-        detail = _get(sess, f"{base}/2/0/models/{model_id}/lists/{l.get('id')}")
-        # detail may wrap the metadata under 'list' or 'metadata'; probe both.
-        meta = {}
-        if isinstance(detail, dict):
-            meta = detail.get("list") or detail.get("metadata") or detail
-        rows.append([
-            l.get("name", ""),
-            _b(meta.get("itemCount")) if isinstance(meta, dict) else "",
-            _b(meta.get("hasSelectiveAccess")) if isinstance(meta, dict) else "",
-            _b(meta.get("numberedList")) if isinstance(meta, dict) else "",
-            _b(meta.get("productionData")) if isinstance(meta, dict) else "",
-            _b(meta.get("managedBy")) if isinstance(meta, dict) else "",
-            _names(meta.get("subsets")) if isinstance(meta, dict) else "",
-            _names(meta.get("properties")) if isinstance(meta, dict) else "",
         ])
     return header, rows
 
@@ -343,31 +673,68 @@ def build_views(sess, base, model_id):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _pull_api_files(sess, base, model_id, out_dir, results):
-    """Write the 7 API-covered CSVs into out_dir, recording status in `results`.
-    Returns the raw line-items payload (reused by the modules builder)."""
+    """Write the 5 genuinely-REST-covered CSVs into out_dir, recording status in
+    `results`. Modules.csv and General Lists.csv are NOT here — the REST API
+    delivers them too sparse to use, so they are produced via the Selenium UI
+    export (see UI_ONLY_TARGETS / _export_targets_via_ui)."""
     def emit(filename, builder):
         try:
-            built = builder()
-            header, rows = built[0], built[1]
+            header, rows = builder()
             path = os.path.join(out_dir, filename)
             _write_csv(path, header, rows)
             results[filename] = {"ok": True, "rows": len(rows), "path": path, "error": None}
             print(f"  [API] ok  {filename:22} {len(rows):>5} rows")
-            return built
         except Exception as e:
             results[filename] = {"ok": False, "rows": None, "path": None, "error": str(e)}
             print(f"  [API] ERR {filename:22} {e}")
-            return None
 
-    li_built = emit("Line Items.csv", lambda: build_line_items(sess, base, model_id))
-    line_items = li_built[2] if li_built else []
-    emit("Modules.csv",       lambda: build_modules(sess, base, model_id, line_items))
-    emit("Versions.csv",      lambda: build_versions(sess, base, model_id))
-    emit("General Lists.csv", lambda: build_general_lists(sess, base, model_id))
-    emit("Actions.csv",       lambda: build_actions(sess, base, model_id))
-    emit("Imports.csv",       lambda: build_imports(sess, base, model_id))
-    emit("Views.csv",         lambda: build_views(sess, base, model_id))
-    return line_items
+    emit("Line Items.csv", lambda: build_line_items(sess, base, model_id))
+    emit("Versions.csv",   lambda: build_versions(sess, base, model_id))
+    emit("Actions.csv",    lambda: build_actions(sess, base, model_id))
+    emit("Imports.csv",    lambda: build_imports(sess, base, model_id))
+    emit("Views.csv",      lambda: build_views(sess, base, model_id))
+
+
+def _export_targets_via_ui(browser, settings_url, download_dir, out_dir,
+                           targets, results, max_tries=3):
+    """Export a list of (nav_label, subtab_label, filename) grids via the proven
+    Selenium model-settings UI export, moving each download into out_dir. Retries
+    up to max_tries, re-opening the model-settings shell each attempt. Records
+    per-file status in `results`. Never raises.
+
+    This is the reliable path for grids that neither the REST API nor the classic
+    core-webapp API can deliver correctly (see UI_ONLY_TARGETS). It is also reused
+    as the per-grid fallback for legacy grids that fail the classic-API path.
+    """
+    import shutil
+    pending = list(targets)
+    for attempt in range(1, max_tries + 1):
+        if not pending:
+            break
+        browser.get(settings_url)
+        if not enter_shell(browser, timeout=30):
+            print(f"  [UI]  -- attempt {attempt}: could not open model-settings shell")
+            continue
+        still_pending = []
+        for nav_label, subtab_label, fn in pending:
+            gr = _export_one_target(browser, download_dir, nav_label, subtab_label, fn)
+            if gr["ok"] and gr.get("saved_path"):
+                dest = os.path.join(out_dir, fn)
+                try:
+                    if os.path.exists(dest):
+                        os.remove(dest)
+                    shutil.move(gr["saved_path"], dest)
+                    results[fn] = {"ok": True, "rows": None, "path": dest, "error": None}
+                    print(f"  [UI]  ok  {fn:22} (Selenium export)")
+                except Exception as e:
+                    results[fn] = {"ok": False, "rows": None, "path": None,
+                                   "error": f"downloaded but move failed: {e}"}
+                    still_pending.append((nav_label, subtab_label, fn))
+            else:
+                results[fn] = {"ok": False, "rows": None, "path": None,
+                               "error": gr.get("error")}
+                still_pending.append((nav_label, subtab_label, fn))
+        pending = still_pending
 
 
 def _print_summary(model_name, results, mode):
@@ -383,25 +750,32 @@ def _print_summary(model_name, results, mode):
 
 
 def download_model_exports_api(model, out_dir=None, name=None):
-    """Log in once (browser), then export all API-covered model files as CSV over
-    plain HTTP. Fast, but only the 7 API-obtainable files; the 8 in
-    API_UNAVAILABLE are reported as not available (use --full for those).
+    """Log in once (browser), then export the fast subset of model files:
+      • 5 files over the REST API v2 (plain HTTP) — Line Items, Versions,
+        Actions, Imports, Views.
+      • Modules + General Lists via the Selenium model-settings UI export, because
+        the REST API delivers those two too sparse to use (see UI_ONLY_TARGETS).
+    The 8 legacy grids in API_UNAVAILABLE are reported as not produced here
+    (use --full for those).
 
     Returns dict keyed by output filename -> {"ok", "rows", "path", "error"}.
     """
-    model_id, model_name, workspace_id, customer_id = smd._resolve_model(model, name=name)
+    model_id, model_name, workspace_id, customer_id = _resolve_model(model, name=name)
     if out_dir is None:
         out_dir = os.path.join(REPO_ROOT, "raw", "models", model_name)
     os.makedirs(out_dir, exist_ok=True)
-    config = smd._build_config()
+    config = _build_config()
+
+    base = config["main_url"].rstrip("/")
+    settings_url = (f"{base}/a/modeling/customers/{customer_id}/workspaces/"
+                    f"{workspace_id}/models/{model_id}/model-settings")
 
     print(f"\n{'=' * 70}")
     print(f"  Anaplan API model export — {model_name}")
     print(f"{'=' * 70}")
     print(f"  Output dir : {out_dir}")
-    print(f"  (browser opens only to log in; all data pulled over HTTP)\n")
+    print(f"  (5 files over REST/HTTP; Modules + General Lists via UI export)\n")
 
-    base = config["main_url"].rstrip("/")
     download_dir = tempfile.mkdtemp(prefix="anaplan_api_login_")
     browser = None
     results = {}
@@ -409,8 +783,17 @@ def download_model_exports_api(model, out_dir=None, name=None):
         browser = scraper_ux._create_browser(download_dir)
         browser.set_script_timeout(120)
         scraper_ux.login(browser, config)
+
+        # ── REST API pull (cookies lifted from this same session) ──────────────
         sess = _session_from_browser(browser, base)
         _pull_api_files(sess, base, model_id, out_dir, results)
+
+        # ── Modules + General Lists via the proven Selenium UI export ──────────
+        print(f"\n  → Exporting {len(UI_ONLY_TARGETS)} grid(s) via the model-"
+              f"settings UI (REST too sparse): "
+              f"{', '.join(fn for _n, _s, fn in UI_ONLY_TARGETS)}")
+        _export_targets_via_ui(browser, settings_url, download_dir, out_dir,
+                               UI_ONLY_TARGETS, results)
     finally:
         if browser is not None:
             try:
@@ -423,15 +806,15 @@ def download_model_exports_api(model, out_dir=None, name=None):
     for fn in API_UNAVAILABLE:
         results[fn] = {"ok": False, "rows": None, "path": None,
                        "error": "not in REST API v2 — run --full (classic core-webapp API)"}
-    _print_summary(model_name, results, "API-only mode")
+    _print_summary(model_name, results, "API + UI mode")
     return results
 
 
-# The 8 legacy-engine-only grids, expressed as scrape_model_data EXPORT_TARGETS
+# The 8 legacy-engine-only grids, expressed as EXPORT_TARGETS
 # (nav_label, subtab_label, filename). These cannot be pulled from the REST API
 # (proven: served only by the classic core-webapp jsonrpc/servlet). --full mode
 # drives them over that classic API directly (no UI clicking) — see below.
-_LEGACY_TARGETS = [t for t in smd.EXPORT_TARGETS if t[2] in set(API_UNAVAILABLE)]
+_LEGACY_TARGETS = [t for t in EXPORT_TARGETS if t[2] in set(API_UNAVAILABLE)]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -533,12 +916,12 @@ def _capture_session_params(browser):
     csid) or (None, None)."""
     browser.execute_script(_SESSION_HOOK_JS)
     # Nudge the classic client to emit a VIEW_REQUEST_SET we can read.
-    smd.enter_shell(browser)
+    enter_shell(browser)
     for nudge in ("Versions", "General lists", "Modules"):
-        if smd.click_visible(browser, nudge, 6):
+        if click_visible(browser, nudge, 6):
             break
     time.sleep(2)
-    smd.enter_grid(browser, 12)
+    enter_grid(browser, 12)
     for b in browser.execute_script("return window.__cap || [];"):
         try:
             j = json.loads(b)
@@ -556,7 +939,7 @@ def _pull_legacy_via_api(browser, base, model_id, ws, out_dir, results):
     jsonrpc = f"https://eu4.app.anaplan.com/core-webapp-{ws}/anaplan/jsonrpc"
     servlet = f"https://eu4.app.anaplan.com/core-webapp-{ws}/anaplan/servlet?taskType=export"
 
-    if not smd.enter_grid(browser, 20):
+    if not enter_grid(browser, 20):
         for fn in _LEGACY_TEMPLATES:
             results[fn] = {"ok": False, "rows": None, "path": None,
                            "error": "could not enter core-webapp iframe"}
@@ -568,7 +951,7 @@ def _pull_legacy_via_api(browser, base, model_id, ws, out_dir, results):
                            "error": "could not capture session params (mdsn/csid)"}
         return
 
-    smd.enter_grid(browser, 12)  # ensure we're in the eu4 iframe for fetch()
+    enter_grid(browser, 12)  # ensure we're in the eu4 iframe for fetch()
     for fn, tpl in _LEGACY_TEMPLATES.items():
         params = {"model_id": model_id, "ws": ws, "mdsn": mdsn, "csid": csid,
                   "jsonrpc": jsonrpc, "servlet": servlet,
@@ -596,21 +979,21 @@ def _pull_legacy_via_api(browser, base, model_id, ws, out_dir, results):
 
 
 def download_model_exports_full(model, out_dir=None, name=None):
-    """Full 15-file export in ONE browser login, entirely API-driven:
-      • Phase 1 — the 7 REST-API files over plain HTTP (cookies lifted).
+    """Full 15-file export in ONE browser login:
+      • Phase 1 — the 5 REST-API files over plain HTTP (cookies lifted).
       • Phase 2 — the 8 legacy grids over the classic core-webapp API
         (jsonrpc VIEW_REQUEST_SET → PROGRESS → servlet), driven by fetch()
         inside the eu4 iframe. No Dojo UI navigation.
+      • Phase 3 — Modules and General Lists via the Selenium model-settings UI
+        export (the REST API delivers them too sparse; see UI_ONLY_TARGETS).
     Any legacy grid that fails the classic-API path falls back to the
-    scrape_model_data UI export for that one grid, so coverage never regresses.
-    The browser is used only to log in / hold the session — every file is
-    retrieved by an Anaplan HTTP API call.
+    local UI export path for that one grid, so coverage never regresses.
     """
-    model_id, model_name, workspace_id, customer_id = smd._resolve_model(model, name=name)
+    model_id, model_name, workspace_id, customer_id = _resolve_model(model, name=name)
     if out_dir is None:
         out_dir = os.path.join(REPO_ROOT, "raw", "models", model_name)
     os.makedirs(out_dir, exist_ok=True)
-    config = smd._build_config()
+    config = _build_config()
     base = config["main_url"].rstrip("/")
     settings_url = (f"{base}/a/modeling/customers/{customer_id}/workspaces/"
                     f"{workspace_id}/models/{model_id}/model-settings")
@@ -619,8 +1002,9 @@ def download_model_exports_full(model, out_dir=None, name=None):
     print(f"  Anaplan FULL model export (API-driven) — {model_name}")
     print(f"{'=' * 70}")
     print(f"  Output dir : {out_dir}")
-    print(f"  REST API for 7 files; classic core-webapp API for "
-          f"{len(_LEGACY_TEMPLATES)} legacy files.\n")
+    print(f"  REST API for 5 files; classic core-webapp API for "
+          f"{len(_LEGACY_TEMPLATES)} legacy files; UI export for "
+          f"{len(UI_ONLY_TARGETS)} (Modules, General Lists).\n")
 
     download_dir = tempfile.mkdtemp(prefix="anaplan_full_")
     browser = None
@@ -638,7 +1022,7 @@ def download_model_exports_full(model, out_dir=None, name=None):
         print(f"\n  → Exporting {len(_LEGACY_TEMPLATES)} legacy grids over the "
               f"classic core-webapp API...")
         browser.get(settings_url)
-        if not smd.enter_shell(browser, timeout=30):
+        if not enter_shell(browser, timeout=30):
             for fn in _LEGACY_TEMPLATES:
                 results[fn] = {"ok": False, "rows": None, "path": None,
                                "error": "could not open model-settings shell"}
@@ -646,40 +1030,20 @@ def download_model_exports_full(model, out_dir=None, name=None):
             _pull_legacy_via_api(browser, base, model_id, workspace_id, out_dir, results)
 
         # ── Phase 2b: UI-export fallback for any legacy grid the API missed ─────
-        import shutil
         failed = [t for t in _LEGACY_TARGETS
                   if not results.get(t[2], {}).get("ok")]
         if failed:
-            print(f"\n  → UI-export fallback for {len(failed)} grid(s): "
+            print(f"\n  → UI-export fallback for {len(failed)} legacy grid(s): "
                   f"{', '.join(fn for _n, _s, fn in failed)}")
-            MAX_TRIES = 3
-            pending = list(failed)
-            for attempt in range(1, MAX_TRIES + 1):
-                if not pending:
-                    break
-                browser.get(settings_url)
-                if not smd.enter_shell(browser, timeout=30):
-                    continue
-                still_pending = []
-                for nav_label, subtab_label, fn in pending:
-                    gr = smd._export_one_target(browser, download_dir, nav_label, subtab_label, fn)
-                    if gr["ok"]:
-                        dest = os.path.join(out_dir, fn)
-                        try:
-                            if os.path.exists(dest):
-                                os.remove(dest)
-                            shutil.move(gr["saved_path"], dest)
-                            results[fn] = {"ok": True, "rows": None, "path": dest, "error": None}
-                            print(f"  [UI]  ok  {fn:22} (fallback download)")
-                        except Exception as e:
-                            results[fn] = {"ok": False, "rows": None, "path": None,
-                                           "error": f"downloaded but move failed: {e}"}
-                            still_pending.append((nav_label, subtab_label, fn))
-                    else:
-                        results[fn] = {"ok": False, "rows": None, "path": None,
-                                       "error": gr.get("error")}
-                        still_pending.append((nav_label, subtab_label, fn))
-                pending = still_pending
+            _export_targets_via_ui(browser, settings_url, download_dir, out_dir,
+                                   failed, results)
+
+        # ── Phase 3: Modules + General Lists via the proven Selenium UI export ──
+        print(f"\n  → Exporting {len(UI_ONLY_TARGETS)} grid(s) via the model-"
+              f"settings UI (REST too sparse): "
+              f"{', '.join(fn for _n, _s, fn in UI_ONLY_TARGETS)}")
+        _export_targets_via_ui(browser, settings_url, download_dir, out_dir,
+                               UI_ONLY_TARGETS, results)
     finally:
         if browser is not None:
             try:
@@ -699,19 +1063,44 @@ def download_model_exports_full(model, out_dir=None, name=None):
 
 def _main():
     p = argparse.ArgumentParser(
-        description="API-driven Anaplan model export. Default mode pulls the 7 "
-                    "REST-API files over HTTP. --full additionally exports the 8 "
-                    "legacy-engine files (Line Item Subsets, Time Ranges, Source "
-                    "Models, Roles×5) over the classic core-webapp API — a complete "
-                    "15-file export in one browser login, no UI navigation.")
-    p.add_argument("model", help="Shortcut key from models.MODELS (e.g. 'fsp').")
+        description="API-driven Anaplan model export. Default mode produces 7 "
+                    "fast files: 5 over the REST API v2 (HTTP) plus Modules and "
+                    "General Lists via the Selenium model-settings UI export (the "
+                    "REST API delivers those two too sparse to use). --full "
+                    "additionally exports the 8 legacy-engine files (Line Item "
+                    "Subsets, Time Ranges, Source Models, Roles×5) over the "
+                    "classic core-webapp API — a complete 15-file export in one "
+                    "browser login. Use --ui-only for the original full "
+                    "Selenium UI export path.")
+    p.add_argument(
+        "model",
+        nargs="?",
+        default=None,
+        help="Shortcut key from models.MODELS (e.g. 'modela'). Omit when using --list-models.",
+    )
     p.add_argument("--name", default=None, help="Override the model's display name.")
     p.add_argument("--out", default=None, help="Output directory for the CSV files.")
     p.add_argument("--full", action="store_true",
                    help="Also export the 8 legacy-engine files over the classic "
                         "core-webapp API (complete 15-file export). Omit for the "
-                        "REST-only 7-file subset.")
+                        "7-file fast subset.")
+    p.add_argument("--ui-only", action="store_true",
+                   help="Run the original pure-Selenium 13-grid exporter from this merged script.")
+    p.add_argument("--list-models", action="store_true",
+                   help="Log in, fetch every model visible to this account, print JSON, and exit.")
     args = p.parse_args()
+
+    if args.list_models:
+        print(json.dumps(list_available_models(), indent=2))
+        sys.exit(0)
+
+    if not args.model:
+        p.error("model is required unless --list-models is passed")
+
+    if args.ui_only:
+        results = download_model_exports(args.model, out_dir=args.out, name=args.name)
+        produced = sum(1 for r in results.values() if r["ok"])
+        sys.exit(0 if produced == len(EXPORT_TARGETS) else 1)
 
     if args.full:
         results = download_model_exports_full(args.model, out_dir=args.out, name=args.name)
