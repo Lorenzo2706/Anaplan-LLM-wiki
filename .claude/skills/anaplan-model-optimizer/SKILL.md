@@ -160,10 +160,13 @@ passes and writes one combined report:
 1. NUX usage count > 0 → **active**, definitely keep
 2. Referenced by another module's formula (`Modules.csv` "Referenced By") →
    **keep**, it's an internal dependency
-3. Used on a classic dashboard (`Modules.csv` "Used in Dashboards") → **keep**
+3. Modules containing line items used as filter for NUX pages, per the NUX report's `UI Filters` sheet
+   (usually named as filter modules, UF XX. or FI XX.)→ **keep**
 4. Source or target of an import/export (`Imports.csv`, plus the report's own
    per-model actions sheet) → **keep**
-5. None of the above → **candidate for review**
+5. Module category headers for auditability purposes, always fully empty 
+   (e.g. `◼️ LOAD MODULES` or `◼️ INFORMATION MODULES`) → **keep**
+6. None of the above → **candidate for review**
 
 It also separately flags any module the CSV export knows about but the NUX
 report doesn't mention at all (name mismatch, or the export predates a rename)
@@ -182,7 +185,10 @@ item in an in-scope module, in order:
 3. Named via dot-notation in an `Imports.csv` Source/Target Object
    (best-effort text parse - may find nothing on models with no internal
    cross-module imports, that's expected, not a bug) → **keep**
-4. None of the above → **candidate for review**
+4. Line items headers in modules for auditabilily purposes (e.g. `---Technical---` or `---CF---`) → **keep**
+5. Line items for conditional formatting (e.g. `CF - <line item name>`),
+   not possible to capture in the NUX scrape, need user review → **User to verify usage** 
+6. None of the above → **candidate for review**
 
 **Manual deletion markers (both passes).** Independently of the above, each
 module and line item is checked for a model-owner deletion marker: `Notes`
