@@ -92,7 +92,7 @@ from selenium.webdriver.common.by import By
 import scraper_ux
 import models
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The 8 legacy-engine grids that the REST API v2 does NOT expose. Default
 # (REST-only) mode skips them and reports them as such; --full retrieves them

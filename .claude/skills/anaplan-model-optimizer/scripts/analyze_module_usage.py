@@ -4,22 +4,31 @@ to find modules - and, for modules that survive that check, individual line
 items - that are genuinely unused, as opposed to ones that are merely absent
 from the new-UX pages/boards by design (Data/Load/Calculation modules in the
 DISCO pattern are normal to have zero NUX exposure - they feed other modules
-via formulas instead).
+via formulas instead). Classic dashboards are legacy and are not considered -
+only NUX usage counts as front-end exposure.
 
 Pass 1 (modules): a module is only reported as a deletion candidate when ALL
 of these are true:
   - zero NUX usage (Modules Usage Count sheet == 0)
   - not referenced by any other module's formula (Modules.csv "Referenced By")
-  - not used in a classic dashboard (Modules.csv "Used in Dashboards")
+  - none of its line items are used as a NUX page filter (Excel "UI Filters"
+    sheet)
   - not the source/target of an import or export (Imports.csv, and the
     Excel's per-model Actions detail sheet)
+  - not a module category header row (e.g. "◼️ LOAD MODULES") - these are
+    always fully empty and exist purely for audit-trail grouping, so they are
+    reported as kept rather than filtered out silently
 
 Pass 2 (line items): scoped to modules whose Pass-1 verdict was ACTIVE or
 KEEP. A line item is a deletion candidate when it has no NUX front-end
 exposure (Views Usage Report - Line Items / UI Filters sheets), no formula
-reference (Line Items.csv "Referenced By"), and no best-effort import/export
-dot-notation match - overlaid with the same manual-deletion-marker
-annotation (Notes/Functional Area) used in Pass 1.
+reference (Line Items.csv "Referenced By"), no best-effort import/export
+dot-notation match, and isn't a section-header/divider name (e.g.
+"---Technical---") - overlaid with the same manual-deletion-marker annotation
+(Notes/Functional Area) used in Pass 1. Line items named like a conditional-
+formatting driver (e.g. "CF Overwrite", "CF - Input") get a distinct "user to
+verify" verdict instead of a candidate verdict, since CF usage inside a
+module's formatting rules isn't visible anywhere in the NUX scrape.
 
 Usage:
     python analyze_module_usage.py --excel "<path to NUX report.xlsx>" \
@@ -97,14 +106,14 @@ def load_modules_csv(model_dir: Path) -> dict:
         # leading U+2800 (braille pattern blank) characters, so a plain
         # startswith() on the glyph misses them - strip that padding first.
         stripped = name.lstrip("⠀ \t")
-        if not stripped or stripped.startswith(SECTION_HEADER_PREFIX):
+        if not stripped:
             continue
         functional_area = (row.get("Functional Area") or "").strip()
         notes = (row.get("Notes") or "").strip()
         modules[name] = {
             "functional_area": functional_area,
             "referenced_by": _extract_names(row.get("Referenced By", "")),
-            "used_in_dashboards_classic": bool((row.get("Used in Dashboards") or "").strip()),
+            "is_category_header": stripped.startswith(SECTION_HEADER_PREFIX),
             "notes": notes,
             "manual_marker": detect_manual_marker(notes, functional_area),
         }
@@ -243,6 +252,7 @@ def load_excel(excel_path: Path):
                     if module_name and li_name:
                         line_item_exposure.add((module_name, li_name))
 
+    ui_filter_modules = set()
     if "UI Filters" in wb.sheetnames:
         ws = wb["UI Filters"]
         rows = list(ws.iter_rows(values_only=True))
@@ -262,12 +272,38 @@ def load_excel(excel_path: Path):
                         raw = str(row[col_idx] or "").strip()
                         for li_name in [x.strip() for x in raw.split(";") if x.strip()]:
                             line_item_exposure.add((module_name, li_name))
+                            ui_filter_modules.add(module_name)
 
     wb.close()
-    return ux_counts, action_usage, line_item_exposure
+    return ux_counts, action_usage, line_item_exposure, ui_filter_modules
 
 
 LI_CANDIDATE_VERDICT = "CANDIDATE FOR REVIEW - no front-end exposure, no formula reference, no import/export match found"
+LI_VERIFY_VERDICT = "USER TO VERIFY - conditional formatting driver, not visible in the NUX scrape"
+
+# Section-header/divider rows kept for audit-trail readability, e.g.
+# "-- Technical --", "---CF---", "== NEW ==" - decorated on both ends with
+# dashes/equals, never themselves real calculation line items.
+_HEADER_DIVIDER_RE = re.compile(r"^[-=]{1,}.*[-=]{1,}$")
+# Conditional-formatting driver line items, e.g. "CF Overwrite", "CF - Input".
+_CF_PREFIX_RE = re.compile(r"^CF(\s|-|$)")
+
+
+def _is_line_item_header(name: str) -> bool:
+    stripped = name.strip()
+    return bool(stripped) and bool(_HEADER_DIVIDER_RE.match(stripped)) and any(c.isalnum() for c in stripped)
+
+
+def _is_cf_conditional_formatting(name: str) -> bool:
+    return bool(_CF_PREFIX_RE.match(name.strip()))
+
+
+def _li_sort_rank(verdict: str) -> int:
+    if verdict == LI_CANDIDATE_VERDICT:
+        return 0
+    if verdict == LI_VERIFY_VERDICT:
+        return 1
+    return 2
 
 
 def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure: set) -> dict:
@@ -316,6 +352,10 @@ def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure
             verdict = "KEEP - feeds other line items via formula"
         elif imported:
             verdict = "KEEP - used as an import/export source or target"
+        elif _is_line_item_header(li_name):
+            verdict = "KEEP - section header/divider (audit trail)"
+        elif _is_cf_conditional_formatting(li_name):
+            verdict = LI_VERIFY_VERDICT
         else:
             verdict = LI_CANDIDATE_VERDICT
 
@@ -327,12 +367,12 @@ def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure
             "referenced_by": meta["referenced_by"],
             "manual_marker": own_marker,
             "inherited_module_delete_flag": inherited_delete_flag,
-            "flagged_but_kept": (own_marker["flagged"] or inherited_delete_flag) and verdict != LI_CANDIDATE_VERDICT,
+            "flagged_but_kept": (own_marker["flagged"] or inherited_delete_flag) and verdict.startswith(("ACTIVE", "KEEP")),
         })
 
     results.sort(key=lambda e: (
         e["module"],
-        e["verdict"] != LI_CANDIDATE_VERDICT,
+        _li_sort_rank(e["verdict"]),
         not (e["manual_marker"]["flagged"] or e["inherited_module_delete_flag"]),
         e["line_item"],
     ))
@@ -340,11 +380,13 @@ def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure
     by_module = {}
     for e in results:
         slot = by_module.setdefault(e["module"], {
-            "functional_area": e["functional_area"], "candidates": [], "flagged_but_kept": [], "total": 0,
+            "functional_area": e["functional_area"], "candidates": [], "to_verify": [], "flagged_but_kept": [], "total": 0,
         })
         slot["total"] += 1
         if e["verdict"] == LI_CANDIDATE_VERDICT:
             slot["candidates"].append(e)
+        elif e["verdict"] == LI_VERIFY_VERDICT:
+            slot["to_verify"].append(e)
         if e["flagged_but_kept"]:
             slot["flagged_but_kept"].append(e)
 
@@ -355,7 +397,9 @@ def analyze_line_items(model_dir: Path, module_results: list, line_item_exposure
         "summary": {
             "total_line_items_checked": len(results),
             "candidates_for_review": sum(1 for e in results if e["verdict"] == LI_CANDIDATE_VERDICT),
+            "to_verify_conditional_formatting": sum(1 for e in results if e["verdict"] == LI_VERIFY_VERDICT),
             "modules_with_candidates": sum(1 for m in by_module.values() if m["candidates"]),
+            "modules_with_verify_items": sum(1 for m in by_module.values() if m["to_verify"]),
             "flagged_but_kept": sum(1 for e in results if e["flagged_but_kept"]),
             "unresolved_view_names": len(unresolved_view_names),
         },
@@ -368,7 +412,7 @@ def analyze(excel_path: Path, model_dir: Path) -> tuple:
         raise SystemExit(f"No modules found in {model_dir / 'Modules.csv'} - check the path.")
 
     imports_usage = load_imports_csv(model_dir)
-    ux_counts, excel_action_usage, line_item_exposure = load_excel(excel_path)
+    ux_counts, excel_action_usage, line_item_exposure, ui_filter_modules = load_excel(excel_path)
     used_in_actions_all = imports_usage | excel_action_usage
 
     results = []
@@ -379,30 +423,36 @@ def analyze(excel_path: Path, model_dir: Path) -> tuple:
             "functional_area": meta["functional_area"],
             "ux_count": ux_count,
             "referenced_by": meta["referenced_by"],
-            "used_in_dashboards_classic": meta["used_in_dashboards_classic"],
+            "used_as_ui_filter": name in ui_filter_modules,
             "used_in_actions": name in used_in_actions_all,
+            "is_category_header": meta["is_category_header"],
             "manual_marker": meta["manual_marker"],
         }
 
-        if ux_count is None:
+        # Category-header rows carry no real NUX/formula/import data by
+        # definition, so they're resolved before - not instead of - the
+        # ordered checks below; the outcome is identical either way.
+        if meta["is_category_header"]:
+            entry["verdict"] = "KEEP - module category header (audit trail)"
+        elif ux_count is None:
             entry["verdict"] = "DATA MISMATCH - not found in NUX report; verify the module name matches exactly"
         elif ux_count > 0:
             entry["verdict"] = "ACTIVE - used in NUX pages/boards"
         elif meta["referenced_by"]:
             entry["verdict"] = "KEEP - feeds other modules via formula"
-        elif meta["used_in_dashboards_classic"]:
-            entry["verdict"] = "KEEP - used in a classic dashboard"
+        elif entry["used_as_ui_filter"]:
+            entry["verdict"] = "KEEP - used as a UI filter source on NUX pages"
         elif entry["used_in_actions"]:
             entry["verdict"] = "KEEP - used as an import/export source or target"
         else:
-            entry["verdict"] = "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found"
+            entry["verdict"] = "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no UI-filter usage, no import/export usage found"
 
         entry["flagged_but_kept"] = meta["manual_marker"]["flagged"] and not entry["verdict"].startswith("CANDIDATE") and not entry["verdict"].startswith("DATA MISMATCH")
 
         results.append(entry)
 
     results.sort(key=lambda e: (
-        e["verdict"] != "CANDIDATE FOR REVIEW - no NUX usage, no formula reference, no dashboard usage, no action usage found",
+        not e["verdict"].startswith("CANDIDATE"),
         not e["manual_marker"]["flagged"],
         e["functional_area"],
         e["name"],
@@ -428,7 +478,7 @@ def to_markdown_modules(report: dict, model_name: str) -> str:
         "",
         f"- Total modules: {s['total_modules']}",
         f"- Active in NUX: {s['active_in_ux']}",
-        f"- Kept (internal dependency - formula/dashboard/action usage): {s['kept_internal_dependency']}",
+        f"- Kept (internal dependency - formula/UI-filter/action usage, or category header): {s['kept_internal_dependency']}",
         f"- **Candidates for review: {s['candidates_for_review']}**",
         f"- Data mismatches (name not found in NUX report): {s['data_mismatches']}",
         f"- Flagged for deletion (Notes/Functional Area) but still active or kept: {s['flagged_but_kept']}",
@@ -477,6 +527,7 @@ def to_markdown_line_items(li_report: dict) -> str:
         "",
         f"- Total line items checked (modules kept/active at module level): {s['total_line_items_checked']}",
         f"- **Candidates for review: {s['candidates_for_review']}** across {s['modules_with_candidates']} module(s)",
+        f"- **To verify (conditional formatting, not visible in NUX): {s['to_verify_conditional_formatting']}** across {s['modules_with_verify_items']} module(s)",
         f"- Flagged for deletion (Notes/inherited Functional Area) but still active or kept: {s['flagged_but_kept']}",
         f"- Unresolved view/module names in the NUX report: {s['unresolved_view_names']}",
         "",
@@ -499,6 +550,33 @@ def to_markdown_line_items(li_report: dict) -> str:
             lines.append(f"| {e['line_item']} | {flag} |")
         lines.append("")
     if not any_candidates:
+        lines.append("None found.")
+        lines.append("")
+
+    lines.append("## Line items to verify usage (conditional formatting)")
+    lines.append("")
+    lines.append(
+        "These names look like conditional-formatting drivers (`CF ...`) - Anaplan's format rules "
+        "aren't captured anywhere in the NUX scrape, so a zero-usage signal here doesn't mean unused, "
+        "only unconfirmed. Check the module's conditional formatting rules directly in Anaplan before "
+        "acting on any of these."
+    )
+    lines.append("")
+    any_verify = False
+    for module_name, data in sorted(li_report["by_module"].items()):
+        if not data["to_verify"]:
+            continue
+        any_verify = True
+        lines.append(f"### {module_name} ({data['functional_area']})")
+        lines.append("")
+        lines.append("| Line Item | Flagged for deletion |")
+        lines.append("|---|---|")
+        for e in data["to_verify"]:
+            flag = ("Yes - " + "; ".join(e["manual_marker"]["reasons"])) if e["manual_marker"]["flagged"] else (
+                "Yes - inherited module Functional Area=DELETE" if e["inherited_module_delete_flag"] else "")
+            lines.append(f"| {e['line_item']} | {flag} |")
+        lines.append("")
+    if not any_verify:
         lines.append("None found.")
         lines.append("")
 
