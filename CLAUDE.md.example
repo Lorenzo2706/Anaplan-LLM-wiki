@@ -76,16 +76,7 @@ sources: [path/to/source1.md, ...]
 
 ### Ingest
 
-Invoke the **`wiki-data-ingestion`** skill (Cowork plugin skill) for all ingest work — both general sources and model CSVs. The skill handles:
-
-- **Path acquisition** — for general sources, asks for file paths if not provided (falls back to auto-discovery by comparing `raw/` against `wiki/sources/` if the user prefers). For model data, asks which model instead — no file needed if the optional scraper toolchain is set up, see below.
-- **Grouping** — for multiple files, asks whether they are related and builds batches accordingly (can be mixed).
-- **Source classification** — auto-detects general doc vs model CSV; for CSVs, auto-detects first-time vs incremental delta by checking `wiki/sources/` and `wiki/models/`.
-- **General source ingest** — creates `wiki/sources/YYYY-MM-DD-<slug>.md`, touches relevant concept/function/pattern pages, updates sub-indexes, appends to `log.md`.
-- **Model data ingest can be scraper-driven** — if `tools/scrape_model_data.py` (optional) is set up, it pulls a model's blueprint CSVs straight from Anaplan into `raw/models/<Model>/` (7 files by default, 15 with `--full`), registering a shortcut in `.env`/`tools/models.py` first (via `--list-models` + user confirmation) if the model isn't configured yet, then proceeds to first-time or incremental-delta ingest below. Manually-dropped CSVs always work as a fallback path.
-- **Model CSV first-time ingest** — seeds `wiki/models/<Model Name>/` with structured module/line-item pages, creates a dated source page, updates indexes.
-- **Model CSV incremental delta** — diffs against prior state (a pre-scrape snapshot for scraper refreshes, or the wiki pages as a proxy for manual re-uploads — this vault keeps no dated raw archives, raw CSVs are always overwritten in place), applies only added/removed/renamed/modified items, creates a new delta source page, flags removals instead of silently deleting.
-- **Post-ingest summary** — always prints a structured summary in chat (no extra files created).
+Invoke the **`wiki-data-ingestion`** skill for all ingest work — both general sources and model CSVs.
 
 ### Query
 
@@ -96,11 +87,11 @@ When the user asks a question:
 3. Once found the query object, read those pages; follow `[[wiki links]]` as needed.
 4. Answer with citations to wiki pages and (when relevant) raw sources.
 5. Read the **`raw/`** original document only if necessary to get full context. 
-6. If the answer is substantive and reusable, offer to file it as a new wiki page (e.g., `wiki/patterns/...`, `wiki/concepts/...`). Create 
+6. If the answer is substantive and reusable, offer to file it as a new wiki page (e.g., `wiki/patterns/...`, `wiki/concepts/...`).
 
 ### Lint
 
-When asked to health-check the wiki, invoke the **`wiki-lint`** skill (available as a Cowork plugin skill). It covers: orphan pages, broken internal links, stale counts/stats in index pages, contradictions across pages, and undocumented companion files. It auto-fixes what's unambiguous and flags anything requiring judgment. After the pass it appends a `## [YYYY-MM-DD] lint | …` entry to `log.md`.
+When asked to health-check the wiki, invoke the **`wiki-lint`** skill. It covers: orphan pages, broken internal links, stale counts/stats in index pages, contradictions across pages, and undocumented companion files. It auto-fixes what's unambiguous and flags anything requiring judgment. After the pass it appends a `## [YYYY-MM-DD] lint | …` entry to `log.md`.
 
 ## Workflow rules
 
@@ -110,8 +101,8 @@ When asked to health-check the wiki, invoke the **`wiki-lint`** skill (available
 - **Update `index.md` and `log.md` on every ingest** — these are the navigation backbone.
 - **Prefer updating an existing page over creating a near-duplicate.** Search the wiki first.
 - **Use Obsidian-friendly syntax** — `[[wiki links]]`, frontmatter, callouts (`> [!note]`).
-- For CSVs of model specifics: extract structure (modules, line items, dimensions, formulas) into structured wiki pages under `wiki/models/<model-name>/`. Use the wiki for reference and keep the raw CSV as the source of truth.
-- Every time you generate an **output that is not a wiki, place it into `analyses/`** (e.g. HTLM files, Word Files, other analyses)
+- **For CSVs of model specifics**: extract structure (modules, line items, dimensions, formulas) into structured wiki pages under `wiki/models/<model-name>/`. Use the wiki for reference and keep the raw CSV as the source of truth.
+- Every time you generate an **output that is not a wiki, place it into `analyses/`** (e.g. HTLM files, Word Files, other analyses), inside the folder of reference. Each Anaplan model should have its folder, if no folder exist for a model at the moment of the analysis creation, create a new folder named after the model and add the analysis in it. Everything non model related goes to `analyses\Other`
 - If the user asks any query related to line item formulas, check the **`anaplan-formula-agent`** skill before answering
 
 ## Scraper toolchain
@@ -120,20 +111,9 @@ Alongside the wiki, `tools/` can hold a small Python toolchain that pulls live u
 
 - **`tools/scraper_ux.py`** — interactive wizard that logs into Anaplan via Selenium/Edge, lets you pick a model, and exports a 5-sheet Excel report (`All Views`, `Actions Usage Report`, `Views Usage Report`, `Modules Usage Count`, `Actions <model>`). Every default (username, environment, SSO, output folder) is sourced from `.env` — no hardcoded credentials.
 - **`tools/models.py`** (gitignored, like `.env` — copy it from the tracked `tools/models.py.example` template) — a `MODELS` dict of quick-select shortcuts (e.g. `modela`) so the wizard's "pick from a live list" step can be scripted instead of browsed. An entry only counts as a usable shortcut once its `customer_id`, `workspace_id`, and `model_id` are all present. `CUSTOMER_ID` and the workspace ID are shared across every model in the tenant — only `model_id` differs per model. Ships empty; to add a model, append a `<PREFIX>_MODEL_ID` to `.env` and mirror the commented-out example entry here.
-- **`tools/scrape_model_data.py`** — the fast, API-driven exporter (reuses `scraper_ux.py`'s login as a black box) that pulls a model's blueprint/settings CSVs into `raw/models/<Model>/`, overwriting each in place — no dated copies. Default mode gets 7 files over the REST API + one UI export for two grids the API can't deliver usably (Modules, General Lists); `--full` adds the 8 legacy-engine grids for all 15. Run `python tools/scrape_model_data.py <shortcut> --name "<Model Name>"`, or `--list-models` to fetch every model visible to this account via the live API when no shortcut exists yet (no `models.py` entry required for that step alone). This is what the `wiki-data-ingestion` skill's model-refresh path drives. It also bundles the original pure-Selenium exporter of all 13 blueprint grids, runnable via `--ui-only` as a standalone fallback — see `docs/SCRAPE_MODEL_DATA.md` for the full picture, including how partial/missing files are handled.
 - **`.env`** (gitignored) — all credentials and environment config: `ANAPLAN_USERNAME`, `ANAPLAN_PASSWORD`, `ANAPLAN_ENVIRONMENT`, `ANAPLAN_USE_SSO`, `ANAPLAN_OUTPUT_FOLDER`, the shared `CUSTOMER_ID`/workspace ID, and per-model `<PREFIX>_MODEL_ID` entries.
 - **`UI/`** (gitignored) — default output folder for scraped Excel reports and per-run logs. May contain real model data — never commit it.
-
-**Non-obvious infra detail:** the `springboard-definition-service` API (builds the Actions/Views usage sheets) always lives on a fixed `us1a.app.anaplan.com` host, regardless of which regional shard the model itself is hosted on (`eu2a`, etc — see `SDS_HOST` in `tools/scraper_ux.py`). Pointing that call at the model's own shard instead returns a silent 503.
-
-Run it with:
-
-```powershell
-pip install selenium openpyxl webdriver-manager python-dotenv
-python tools/scraper_ux.py
-```
-
-It opens a real (non-headless) Edge window — the driver is auto-downloaded via Selenium Manager. Every wizard prompt defaults from `.env`; only the model-selection number and the final "scrape another model?" question need real input.
+- **`tools/scrape_model_data.py`** — check `docs/SCRAPE_MODEL_DATA.md` for reference.
 
 `.claude/skills/anaplan-model-optimizer/scripts/analyze_module_usage.py` cross-references a scraped report against `raw/models/<Model>/Modules.csv` and `Imports.csv` to separate genuinely dead modules from ones that are merely invisible in the NUX by design (Data/Load/Calculation modules in the DISCO pattern normally have zero NUX exposure):
 
@@ -146,7 +126,11 @@ python .claude/skills/anaplan-model-optimizer/scripts/analyze_module_usage.py \
   --out-markdown "analyses/<Model Name>-module-optimization-<date>.md"
 ```
 
-There is no automated test suite in this repo — verification is by actually running the scraper against a live tenant and inspecting the resulting Excel.
+The scraper itself has no automated test suite — verification is by actually running it against a live tenant and inspecting the resulting Excel. `analyze_module_usage.py`'s manual-marker detection does have unit tests:
+
+```bash
+pytest .claude/skills/anaplan-model-optimizer/scripts/test_analyze_module_usage.py
+```
 
 ## Skills
 
@@ -156,6 +140,8 @@ Project skills live in `.claude/skills/`. Auto-invoke (via the `Skill` tool) whe
 - **`anaplan-formula-agent`** (`.claude/skills/anaplan-formula-agent/SKILL.md`) — write, explain, debug, or optimize Anaplan formulas using full model context. Trigger whenever the user asks to write/fix/refactor a formula, mentions a specific module/line item/list, asks about Classic vs Polaris engine differences, or has uploaded model CSVs. Includes a Step-0 context-loading protocol, engine-determination gate, Planual checklist, and `references/classic-vs-polaris.md` for engine-specific function behavior. Prefer this skill over generic formula reasoning whenever model context is available.
 - **`anaplan-module-mapping`** (`.claude/skills/anaplan-module-mapping/SKILL.md`) — the **dual-explanation standard** for wiring line items across modules. Trigger whenever connecting/feeding one module into another, writing cross-module formulas (`SUM:`, `LOOKUP:`, `SELECT:`, dot-notation references), explaining data flow, or justifying why a formula is written a certain way. Always delivers two separate explanations per formula: (1) financial/functional logic and (2) Anaplan technical mechanics. Includes a dimension-alignment checklist, sign-convention reference, and common CA→FS mapping scenarios. Composes with `anaplan-formula-agent` — use both when the formula is both cross-module and engine-sensitive.
 - **`anaplan-model-optimizer`** (`.claude/skills/anaplan-model-optimizer/SKILL.md`) — end-to-end production model housekeeping. Trigger on "optimize this model", "clean up my Anaplan model", "which modules can I delete", "unused/orphaned/dead modules", or any mention of the NUX/UX scraper (`tools/scraper_ux.py`, alongside `tools/models.py`). Runs the scraper for the chosen model, then cross-references the resulting Excel against `raw/models/<Model>/Modules.csv` and `Imports.csv` (via the bundled `scripts/analyze_module_usage.py`) so it never flags Data/Load/Calculation modules that are intentionally invisible in the UX but still feed other modules by formula. Reports deletion candidates in chat and saves the full report under `analyses/`. Never deletes anything itself — recommendation only.
+- **`anaplan-model-documentation`** (`.claude/skills/anaplan-model-documentation/SKILL.md`) — generates a full Word documentation deliverable for a model (Introduction, Data Flows, Technical Set-up with Lists/Modules/Integrations/UX, Appendices for Glossary and Model Scheme). Trigger on "document this model", "draft documentation for X", "write up the model", requests for onboarding material or a model handbook, or "redraft"/"update" an existing model doc to match a reference document's style. Heavy-duty: dispatches 6 parallel background research agents against the model's wiki + raw CSVs (one per outline domain), then runs the bundled `scripts/md_to_sections.py` + `scripts/build_docx.js` pipeline to assemble and style the `.docx`, and `scripts/validate_docx.py` to check it without relying on LibreOffice/pandoc/python-docx. Places `[PLACEHOLDER: ...]` markers rather than fabricating anything the sources don't confirm. Saves to `analyses/<Model>-Model-Documentation.docx` and cross-references it from the model's wiki page.
+- **`circular-reference-prevention`** (`.claude/skills/circular-reference-prevention/SKILL.md`) — audits an Anaplan model for circular-reference/DISCO-break risk and for modules mislabeled as Calculation that actually behave as Output. Trigger on "circular reference", "DISCO break", "engine failure risk", "loop risk", "mislabeled module", or any whole-model integrity pass over `Line Items.csv`/`Modules.csv`. Enforces two disciplines a plain reasoning pass tends to skip: independent verification of every candidate cycle/mislabel by a separate agent (not self-review), and `Workflow`-based orchestration once the model is bigger than a handful of modules. Distinguishes same-period edges (real risk) from `PREVIOUS()`/`OFFSET()`/`NEXT()`-shifted edges (safe, sequential) and behavioral Output role (nothing reads it back for calculation) from the module's raw DISCO tag. Saves the HTML deliverable to `analyses/<Model>-circular-reference-audit-<date>.html`.
 - **`wiki-lint`** (Cowork plugin skill, not a project skill) — full sanity-check pass on this wiki. Trigger on "lint the wiki", "health check", "check for orphan pages", "wiki cleanup", or any similar phrasing. Covers: orphans, broken links, stale stats, contradictions, undocumented files. Auto-fixes safe issues, flags the rest, and appends to `log.md`. Generic — works on any markdown wiki, not Anaplan-specific.
 - **`wiki-data-ingestion`** (Cowork plugin skill, not a project skill) — structured ingest of new sources into the wiki. Trigger whenever the user drops a file into `raw/`, says "ingest", "process this CSV", "update the wiki with this file", or any variant. Handles general docs and model CSVs (with automatic first-time vs delta detection), path acquisition, multi-file grouping, index/log updates, and a mandatory post-ingest summary. Always use this skill instead of doing ad-hoc ingest work. If you're still on the shipped sample layout, exclude `raw/docs/First setup/` from auto-discovery until you've flattened it (see README § Setup).
 

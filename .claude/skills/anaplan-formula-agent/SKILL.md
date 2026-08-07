@@ -70,7 +70,7 @@ when new CSVs are uploaded):
 
   > "Is this model running on the **Classic** or **Polaris** calculation
   > engine? (If you're unsure, check Model Settings → Calculation Engine in
-  > the Anaplan model.)"
+  > the Anaplan model and if not provided ask the user directly before executing.)"
 
 Once determined, **store the engine for the rest of the session** — do not
 ask again unless the user switches models.
@@ -106,9 +106,11 @@ number of questions before proceeding. Never guess formats or dimensions.
   then give the corrected formula.
 - Exception: when the user explicitly asks for an explanation, return a
   plain-English step-by-step breakdown (one sentence per logical step).
-- When a formula should be split across multiple line items (see Planual rule
-  below), list each intermediate line item name and its formula separately,
-  labeled clearly.
+- Never return a non existing function: always validate the outcome with grep `wiki\functions\index.md`. 
+- Always respect the Planual best practices (see `references/planual-best-practices.md`) 
+  and the engine-specific constraints, as specified above.
+- When a formula should be split across multiple line items, list each 
+  intermediate line item name and its formula separately, labeled clearly.
 - When a Polaris alternative exists for a Classic formula, show **both**,
   labeled `[Classic]` and `[Polaris]`, unless the engine is already known.
 
@@ -160,59 +162,6 @@ Quick test before writing either function: *"Is there an actual mapping module
 resolving a list-to-list relationship here, or does the target just have fewer
 dimensions than the source with Summary:Sum already set?"* — the first needs
 `SUM()`/`LOOKUP:`, the second needs nothing but the reference itself.
-
----
-
-## Planual Best Practices
-
-Apply these automatically. Reference: [Planual](`.\Anaplan LLM wiki\wiki\patterns\planual`) and
-[Anapedia](https://help.anaplan.com, if you cannot find relevant information in the wiki).
-
-1. **Break complex formulas into intermediate line items.** If a formula
-   cannot be described in one sentence, split it. Never nest more logic than
-   necessary.
-
-2. **Replace nested IFs with LOOKUP on a mapping module.** If more than ~3
-   `IF THEN ELSE IF` blocks appear, recommend restructuring with a constants
-   or mapping module.
-
-3. **No hard-coded SELECT on list members.** Use a SYS/constants module and
-   LOOKUP instead of `SELECT(List.'Item')` embedded in formulas.
-
-4. **Booleans over text flags.** Use Boolean-formatted line items in SYS
-   modules rather than text string comparisons.
-
-5. **Guard FINDITEM with ISNOTBLANK.**
-   `IF ISNOTBLANK(text) THEN FINDITEM(List, text) ELSE BLANK`
-
-6. **No POST for time offsets.** Use `OFFSET`, `LAG`, or `MOVINGSUM`.
-   (POST is available in Polaris but cannot be used on Formula summary line items; prefer OFFSET.)
-
-7. **Flag single-threaded functions.** `RANK`, `RANKCUMULATE`, and
-   `ISFIRSTOCCURRENCE` are single-threaded — warn the user if the target list
-   is large (>10k items).
-
-8. **TIMESUM only for non-time-dimensioned line items.** If the source is
-   already time-dimensioned, use `MOVINGSUM` or `YEARTODATE` instead.
-
-9. **Minimize text concatenation (`&`) in large modules.** Pre-compute in a
-   smaller SYS module and reference the result.
-
-10. **Calculate once, reference many times.** Never duplicate formula logic
-    across line items — build an intermediate and reference it.
-
-11. **Use SYS modules for static/reference data.** Data that does not change
-    with user input belongs in a SYS or PARAM module, not inline.
-
-12. **Name intermediate line items clearly.** Prefix with `x ` (helper) or
-    `SYS ` (system) per Planual naming conventions.
-
-13. **Avoid circular references.** If a formula references itself (directly or
-    indirectly), restructure the model to eliminate the circularity. This means to always follow DISCO principles. 
-    Example: Reporting module should not reference a Calculation module that references back to the Reporting module. 
-    Always pay attention to dependencies and data flow. 
-
-14. **Never combine SUM with LOOKUP in the same line item formula.** It leads to long calcualtion time. 
 
 ---
 
@@ -332,3 +281,8 @@ headers. Columns may vary slightly — match by closest name.
   Polaris formula work — it supersedes `classic-vs-polaris.md` on function availability.**
   Also contains corrections to errors in `classic-vs-polaris.md` (POST, PREVIOUS, NEXT,
   COLLECT, CUMULATE were all incorrectly described there).
+
+- **`references/planual-best-practices.md`** — Planual best practices for formula
+  writing, including intermediate line item naming conventions, IF/LOOKUP rules,
+  and performance guidance. Always follow these rules when writing or refactoring
+  formulas.

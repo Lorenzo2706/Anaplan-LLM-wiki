@@ -10,7 +10,7 @@ The wiki is the agent's **external memory** — not the product. The point is th
 
 - **Claude Code as an Anaplan model-builder agent** with a project-specific system prompt (`CLAUDE.md`) that defines a vault schema, ingest/query/lint workflows, and Anaplan-aware conventions (DISCO, PLANS, engine-aware reasoning).
 - **A vault layout** that separates immutable sources (`raw/`) from generated, queryable wiki pages (`wiki/`).
-- **Seven skills** that auto-activate from context, all shipped as project skills in `.claude/skills/`: `first-setup` (one-time bootstrap of a freshly cloned vault — builds the empty folder skeleton, flattens the sample docs, adopts `CLAUDE.md`, verifies skills are in place), `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning), `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula), `anaplan-model-optimizer` (runs the NUX/UX scraper for a model and cross-references usage against the raw CSV export to flag genuinely dead modules, never the ones invisible-by-design), `anaplan-model-documentation` (fans out parallel research agents to assemble a full Word documentation deliverable for a model), `wiki-lint` (generic wiki sanity-check — orphans, broken links, stale stats, contradictions, auto-fix pass), and `wiki-data-ingestion` (structured ingest of docs and model CSVs — path acquisition, grouping, delta detection, index/log updates, post-ingest summary; can drive the optional `scrape_model_data.py` exporter directly for model CSV refreshes, with manual drops as a fallback).
+- **Eight skills** that auto-activate from context, all shipped as project skills in `.claude/skills/`: `first-setup` (one-time bootstrap of a freshly cloned vault — builds the empty folder skeleton, flattens the sample docs, adopts `CLAUDE.md`, verifies skills are in place), `anaplan-formula-agent` (formula writing/debugging, Step-0 context-loading + Classic-vs-Polaris reasoning), `anaplan-module-mapping` (cross-module wiring — delivers dual financial-logic + Anaplan-mechanics explanations for every formula), `anaplan-model-optimizer` (runs the NUX/UX scraper for a model and cross-references usage against the raw CSV export to flag genuinely dead modules, never the ones invisible-by-design), `anaplan-model-documentation` (fans out parallel research agents to assemble a full Word documentation deliverable for a model), `circular-reference-prevention` (audits a model for circular-reference/DISCO-break risk and modules mislabeled as Calculation that actually behave as Output, with independent verification of every candidate), `wiki-lint` (generic wiki sanity-check — orphans, broken links, stale stats, contradictions, auto-fix pass), and `wiki-data-ingestion` (structured ingest of docs and model CSVs — path acquisition, grouping, delta detection, index/log updates, post-ingest summary; can drive the optional `scrape_model_data.py` exporter directly for model CSV refreshes, with manual drops as a fallback).
 - **Obsidian compatibility** — open the vault in Obsidian to browse `[[wiki links]]` visually while Claude maintains it.
 
 ---
@@ -39,7 +39,7 @@ No databases, no servers, no API keys beyond what Claude Code itself needs. Ever
    - builds the empty `raw/models/`, `raw/logs/`, `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`, `wiki/sources/`, `analyses/`, and `Clippings/` folders (git doesn't track empty directories, so these don't exist yet on a fresh clone),
    - flattens the shipped `raw/docs/First setup/` sample bundle into `raw/docs/` and simplifies `.gitignore` to match,
    - copies `CLAUDE.md.example` to `CLAUDE.md`, strips the notes that only apply to the unflattened layout, and asks you for your vault root path and each model's name + engine (Classic/Polaris) to fill in,
-   - reports which project skills are present under `.claude/skills/` (all seven ship with the repo, so normally all are).
+   - reports which project skills are present under `.claude/skills/` (all eight ship with the repo, so normally all are).
 
 That's it. Claude will create `wiki/` pages, `index.md`, and `log.md` as you start ingesting content. The skill is idempotent, so re-running "run first-time setup" later is a safe no-op if something didn't finish.
 
@@ -84,6 +84,8 @@ Prefer to do it by hand, or want to see exactly what the skill automates? Here's
         │       └── analyze_module_usage.py
         ├── anaplan-model-documentation/
         │   └── SKILL.md
+        ├── circular-reference-prevention/
+        │   └── SKILL.md
         ├── wiki-lint/
         │   └── SKILL.md
         └── wiki-data-ingestion/
@@ -92,7 +94,7 @@ Prefer to do it by hand, or want to see exactly what the skill automates? Here's
 
 Optional: a `tools/` folder holding `scraper_ux.py`, `scrape_model_data.py`, and `models.py`, plus `docs/SCRAPE_MODEL_DATA.md`, a gitignored `.env`, and a `UI/` output folder — the toolchain `anaplan-model-optimizer` drives to pull live NUX usage data, and `wiki-data-ingestion` drives to refresh a model's blueprint CSVs. `models.py` is gitignored like `.env` — copy it from `models.py.example`. See [Scraper toolchain](#scraper-toolchain-optional) below.
 
-Only `CLAUDE.md.example`, all seven `.claude/skills/` folders, `tools/scraper_ux.py`/`tools/models.py.example`/`tools/scrape_model_data.py`/`docs/SCRAPE_MODEL_DATA.md`, and `raw/docs/First setup/` (the sample bundle) ship with the repo — the empty top-level directories (`raw/models/`, `raw/logs/`, `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`, `wiki/sources/`, `analyses/`, `Clippings/`) don't exist yet on a fresh clone, since git doesn't track empty folders. Create them yourself:
+Only `CLAUDE.md.example`, all eight `.claude/skills/` folders, `tools/scraper_ux.py`/`tools/models.py.example`/`tools/scrape_model_data.py`/`docs/SCRAPE_MODEL_DATA.md`, and `raw/docs/First setup/` (the sample bundle) ship with the repo — the empty top-level directories (`raw/models/`, `raw/logs/`, `raw/assets/`, `wiki/concepts/`, `wiki/functions/`, `wiki/models/`, `wiki/patterns/`, `wiki/sources/`, `analyses/`, `Clippings/`) don't exist yet on a fresh clone, since git doesn't track empty folders. Create them yourself:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path raw/models, raw/logs, raw/assets, `
@@ -134,7 +136,7 @@ Edit the engine-default block and any team-specific naming conventions to fit yo
 
 #### 4. Install the project skills
 
-Copy all seven `.claude/skills/` subfolders into your vault:
+Copy all eight `.claude/skills/` subfolders into your vault:
 
 **`anaplan-formula-agent`** — auto-activates when you ask Claude to write, fix, refactor, or explain a formula; mention a module/line item/list by name; ask about Classic vs Polaris differences; or have model CSVs ingested. Includes a Step-0 context-loading protocol, Planual checklist, and `references/classic-vs-polaris.md`.
 
@@ -143,6 +145,8 @@ Copy all seven `.claude/skills/` subfolders into your vault:
 **`anaplan-model-optimizer`** — auto-activates on "optimize this model", "which modules can I delete", "unused/orphaned/dead modules", or any mention of the NUX/UX scraper. Runs `scraper_ux.py` for the chosen model, then cross-references the resulting Excel against `raw/models/<Model>/Modules.csv` and `Imports.csv` (via the bundled `scripts/analyze_module_usage.py`) so it never flags Data/Load/Calculation modules that are intentionally invisible in the UX but still feed other modules by formula. Recommendation only — never deletes anything itself; saves the full report under `analyses/`. Needs the optional [scraper toolchain](#scraper-toolchain-optional) set up first.
 
 **`anaplan-model-documentation`** — auto-activates on "document this model", "draft documentation for X", "write up the model", or a request to redraft an existing model doc to match a reference style. Dispatches six parallel background research agents against the model's wiki + raw CSVs (one per outline domain: Introduction, Data Flows, Technical Set-up, Appendices), then assembles a validated `.docx` with `[PLACEHOLDER: ...]` markers for anything the sources don't confirm. Saves to `analyses/<Model>-Model-Documentation.docx`.
+
+**`circular-reference-prevention`** — auto-activates on "circular reference", "DISCO break", "engine failure risk", "loop risk", "mislabeled module", or a whole-model integrity pass over `Line Items.csv`/`Modules.csv`. Distinguishes same-period edges (real risk) from `PREVIOUS()`/`OFFSET()`/`NEXT()`-shifted edges (safe, sequential), and a module's behavioral Output role (nothing reads it back for calculation) from its raw DISCO tag. Every candidate cycle or mislabel gets independently verified by a separate agent rather than self-reviewed, with `Workflow`-based orchestration once the model is bigger than a handful of modules. Saves to `analyses/<Model>-circular-reference-audit-<date>.html`.
 
 **`wiki-lint`** — auto-activates on "lint the wiki", "health check", "check for orphan pages", "wiki cleanup", and similar phrasing. Runs five standard checks: orphan pages, broken internal links, stale counts/stats, contradictions across pages, undocumented companion files. Fixes what's safe automatically (registers orphans in indexes, corrects stale counts, notes undocumented files) and flags anything requiring judgment. Appends a dated entry to `log.md`. Generic — works on any markdown wiki, not specific to Anaplan.
 
@@ -203,6 +207,12 @@ Triggers the **`anaplan-model-optimizer`** skill. It runs `tools/scraper_ux.py` 
 
 Triggers the **`anaplan-model-documentation`** skill. Fans out six background research agents over the model's wiki pages and raw CSVs, then assembles a styled `.docx` under `analyses/<Model>-Model-Documentation.docx` with explicit placeholders for anything unconfirmed.
 
+### Audit a model for circular-reference risk
+
+> "Check `<Model>` for circular reference risk" (or "any DISCO breaks?" / "which modules are mislabeled as Calculation?")
+
+Triggers the **`circular-reference-prevention`** skill. Distinguishes genuine same-period feedback loops from safe `PREVIOUS()`/`OFFSET()`/`NEXT()`-shifted edges, and flags modules tagged Calculation that behave as Output because nothing reads them back for calculation. Every candidate is independently verified by a separate agent before being reported. Saves the HTML deliverable under `analyses/<Model>-circular-reference-audit-<date>.html`.
+
 ---
 
 ## Customizing for your team
@@ -236,12 +246,19 @@ python tools/scraper_ux.py
 
 It opens a real (non-headless) Edge window — the driver is auto-downloaded via Selenium Manager. Every wizard prompt defaults from `.env`; only the model-selection number and the final "scrape another model?" question need real input.
 
+The scraper itself has no automated test suite — verification is by actually running it against a live tenant and inspecting the resulting Excel. `analyze_module_usage.py`'s manual-marker detection does have unit tests:
+
+```bash
+pytest .claude/skills/anaplan-model-optimizer/scripts/test_analyze_module_usage.py
+```
+
 ---
 
 ## Tips
 
 - **Confirm angle before big ingests.** A two-line "I'll emphasize X, Y, Z — OK?" exchange beats redoing 20 wiki pages.
 - **Never edit `raw/`.** It's the source of truth and the diff baseline. Edit `wiki/` instead.
+- **File non-wiki outputs under `analyses/<Model>/`.** Anything that isn't a wiki page (HTML audits, Word docs, other one-off deliverables) goes into that model's own subfolder — create one if it doesn't exist yet. Anything not tied to a specific model goes into `analyses/Other`.
 - **Keep page scope tight** — one concept, one function, one module per page. Split at ~400 lines.
 - **Update sub-indexes, not the root.** The root `index.md` only changes when a new top-level section appears.
 - **Use the log.** `log.md` is the chronological audit trail; Claude appends to it on every ingest. `grep '^## \[' log.md` for a quick history.
@@ -259,6 +276,7 @@ What's checked in here as a working example:
 - `.claude/skills/anaplan-module-mapping/` — cross-module wiring skill (project skill)
 - `.claude/skills/anaplan-model-optimizer/` — dead-module analysis skill, cross-references a scraped NUX report against `Modules.csv`/`Imports.csv` (project skill)
 - `.claude/skills/anaplan-model-documentation/` — generates a full Word documentation deliverable for a model via parallel research agents (project skill)
+- `.claude/skills/circular-reference-prevention/` — audits a model for circular-reference/DISCO-break risk and mislabeled Calculation modules, with independent per-finding verification (project skill)
 - `.claude/skills/wiki-lint/` — generic wiki sanity-check skill (project skill)
 - `.claude/skills/wiki-data-ingestion/` — structured ingest pipeline for docs and model CSVs (project skill)
 - `tools/scraper_ux.py`, `tools/scrape_model_data.py`, `tools/models.py.example`, `docs/SCRAPE_MODEL_DATA.md` — optional scraper toolchain: NUX usage-data export (drives `anaplan-model-optimizer`) and model blueprint CSV export (drives `wiki-data-ingestion`'s model-refresh path); see [Scraper toolchain](#scraper-toolchain-optional) above. `tools/models.py` itself is gitignored — copy it from `models.py.example` locally.
