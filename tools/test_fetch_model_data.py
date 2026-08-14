@@ -6,9 +6,15 @@ import pytest
 
 from fetch_model_data import (
     Grid,
+    GridTooLargeError,
+    MAX_CELLS,
     NameMismatchError,
+    build_arg_parser,
     build_digest,
     build_pages_param,
+    check_grid_size,
+    fetch_list_items,
+    fetch_module,
     fetch_view_metadata,
     find_list_id_via_api,
     find_view_id_offline,
@@ -605,3 +611,90 @@ def test_safe_print_survives_unencodable_console(monkeypatch):
         raise UnicodeEncodeError("charmap", "x", 0, 1, "unmappable")
     monkeypatch.setattr("builtins.print", boom)
     safe_print("Financi\u00ebn")  # must not raise
+
+
+def test_out_dir_is_required():
+    """The tool must never pick a fallback location for client data."""
+    parser = build_arg_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["module", "fsp", "REV 01. Revenue Calc"])
+
+
+def test_parses_module_command_with_all_narrowing():
+    args = build_arg_parser().parse_args([
+        "module", "fsp", "REV 01. Revenue Calc", "--out-dir", "/scratch",
+        "--page", "Product:Widget A", "--line-items", "Volume,Price",
+        "--periods", "Jan 26:Mar 26", "--sample", "5",
+    ])
+    assert args.command == "module"
+    assert args.shortcut == "fsp"
+    assert args.name == "REV 01. Revenue Calc"
+    assert args.out_dir == "/scratch"
+    assert args.page == "Product:Widget A"
+    assert args.line_items == "Volume,Price"
+    assert args.periods == "Jan 26:Mar 26"
+    assert args.sample == 5
+
+
+def test_parses_list_command():
+    args = build_arg_parser().parse_args(
+        ["list", "umd", "Afdeling", "--out-dir", "/scratch"])
+    assert args.command == "list" and args.name == "Afdeling"
+
+
+def test_sample_defaults_to_ten():
+    args = build_arg_parser().parse_args(
+        ["module", "fsp", "M", "--out-dir", "/scratch"])
+    assert args.sample == 10
+
+
+def test_check_grid_size_allows_small_grid():
+    assert check_grid_size(sample_grid()) is None
+
+
+def test_check_grid_size_refuses_oversized_and_names_page_dims():
+    """Refuse rather than truncate: a silently biased slice is worse than an
+    error, because the agent cannot tell it was truncated."""
+    with pytest.raises(GridTooLargeError) as exc:
+        check_grid_size(sample_grid(), max_cells=2)
+    assert "Product" in str(exc.value) and "Region" in str(exc.value)
+    assert "--page" in str(exc.value)
+
+
+class RecordingSession:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
+
+    def get(self, url, timeout=180):
+        self.calls.append(url)
+        return self.payload
+
+
+def test_fetch_module_always_sends_format_v1():
+    """Without format=v1 the API returns 400 'Mandatory query parameter
+    format is missing'."""
+    sess = RecordingSession(load_fixture("view_data_sample.json"))
+    fetch_module(sess, "https://api.anaplan.com", "M1", "102000000025",
+                 load_fixture("view_meta_sample.json"), "")
+    assert "format=v1" in sess.calls[0]
+
+
+def test_fetch_module_appends_pages_after_format():
+    sess = RecordingSession(load_fixture("view_data_sample.json"))
+    fetch_module(sess, "https://api.anaplan.com", "M1", "102000000025",
+                 load_fixture("view_meta_sample.json"), "101000000007:214000000002")
+    assert "format=v1" in sess.calls[0]
+    assert "pages=101000000007:214000000002" in sess.calls[0]
+
+
+def test_fetch_list_items_reads_listItems_key():
+    """The API returns `listItems`; reading `items` would yield an empty grid
+    for every list and be reported as the legitimate EMPTY: state."""
+    sess = RecordingSession({"listItems": [
+        {"id": "1", "name": "Alpha", "code": "A", "parent": "Top"},
+        {"id": "2", "name": "Beta", "code": None, "parent": None},
+    ]})
+    grid = fetch_list_items(sess, "https://api.anaplan.com", "M1", "101000000012")
+    assert grid.n_rows == 2
+    assert grid.row_labels == [("Alpha",), ("Beta",)]

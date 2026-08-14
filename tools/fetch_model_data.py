@@ -8,11 +8,19 @@ caller-supplied --out-dir (never a default location).
 
 NEVER write fetched cell values into wiki/, analyses/, or log.md. See CLAUDE.md.
 """
+import argparse
 import csv
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass, field, replace
+from urllib.parse import quote
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import anaplan_session
+import models
 
 
 @dataclass
@@ -213,6 +221,61 @@ def fetch_view_metadata(session, base, model_id, view_id):
     """GET /views/{id} - the ONLY source of viewName, row/column dimension
     names, and page dimension names+ids. The data payload has none of them."""
     return session.get(f"{base}/2/0/models/{model_id}/views/{view_id}")
+
+
+# Refuse rather than truncate above this size. A truncated grid the agent
+# believes is complete is the worst outcome for formula validation.
+MAX_CELLS = 50_000
+
+# Engine per model, from CLAUDE.md. Surfaced in the digest because Classic and
+# Polaris differ on sparsity and aggregation, which changes how blanks read.
+_ENGINE_BY_RAW_DIR = {
+    "FSP 2.0": "Polaris", "AAC": "Polaris",
+    "MJP": "Classic", "Old FSP": "Classic", "Data Hub 2.0": "Classic",
+}
+
+# Only `fsp` sits in a DEV workspace; the rest are production.
+_DEV_SHORTCUTS = {"fsp"}
+
+
+class GridTooLargeError(Exception):
+    """The grid exceeds MAX_CELLS. Carries actionable narrowing advice."""
+
+
+def check_grid_size(grid, max_cells=MAX_CELLS):
+    total = grid.n_rows * grid.n_cols
+    if total <= max_cells:
+        return None
+    dims = ", ".join(grid.available_page_dims) or "(none reported)"
+    raise GridTooLargeError(
+        f"Grid is {grid.n_rows} x {grid.n_cols} = {total} cells, over the "
+        f"{max_cells} limit. Refusing to truncate. Narrow it with --page "
+        f"(available page dimensions: {dims}), or restrict --periods."
+    )
+
+
+def fetch_module(session, base, model_id, view_id, meta_payload, pages):
+    """Fetch a view's cell data. `format=v1` is MANDATORY - without it the API
+    returns 400 'Mandatory query parameter format is missing'."""
+    url = f"{base}/2/0/models/{model_id}/views/{view_id}/data?format=v1"
+    if pages:
+        url = f"{url}&pages={quote(pages, safe=':,')}"
+    return parse_view_data(session.get(url), meta_payload)
+
+
+def fetch_list_items(session, base, model_id, list_id):
+    """Render list items as a Grid so digest/CSV/narrowing code is shared.
+
+    The response key is `listItems`, NOT `items` (verified 2026-08-14)."""
+    body = session.get(f"{base}/2/0/models/{model_id}/lists/{list_id}/items")
+    items = body.get("listItems") or []
+    cols = ["id", "code", "parent"]
+    return Grid(
+        row_dim_names=["Item"],
+        row_labels=[(str(i.get("name", "")),) for i in items],
+        col_labels=cols,
+        cells=[[_fmt(i.get(c)) or None for c in cols] for i in items],
+    )
 
 
 def verify_resolved_name(requested, returned):
@@ -526,3 +589,148 @@ def build_digest(grid, meta, sample_n, full_path):
     lines.append("NOTE   : values above are live model data. Quote them in chat "
                  "if useful, but never write them into wiki/, analyses/, or log.md.")
     return "\n".join(lines)
+
+
+def build_arg_parser():
+    parser = argparse.ArgumentParser(
+        prog="fetch_model_data.py",
+        description="Read-only: fetch live Anaplan cell data for one module or "
+                    "list. Prints a token-bounded digest; writes the full grid "
+                    "to --out-dir.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    for name, help_text in (("module", "Fetch a module's default view"),
+                            ("list", "Fetch a list's items")):
+        p = sub.add_parser(name, help=help_text)
+        p.add_argument("shortcut", help="models.py shortcut, e.g. fsp")
+        p.add_argument("name", help="Module or list name, exactly as in Anaplan")
+        p.add_argument("--out-dir", required=True,
+                       help="REQUIRED. Directory for the full CSV - pass your "
+                            "session scratchpad. Never a path inside the repo.")
+        p.add_argument("--sample", type=int, default=10,
+                       help="Rows to show in the digest (default 10)")
+        if name == "module":
+            p.add_argument("--page", default="",
+                           help='Server-side narrowing, e.g. "Product:Widget A,Region:EMEA"')
+            p.add_argument("--line-items", default="",
+                           help='Rows to keep, e.g. "Volume,Price"')
+            p.add_argument("--periods", default="",
+                           help='Columns to keep: "Jan 26,Mar 26" or "Jan 26:Mar 26"')
+    return parser
+
+
+def main(argv=None):
+    args = build_arg_parser().parse_args(argv)
+
+    if os.path.abspath(args.out_dir).startswith(os.path.abspath(REPO_ROOT)):
+        print(f"ERROR: --out-dir {args.out_dir!r} is inside the repository. "
+              f"This repo is under OneDrive sync and must never hold client "
+              f"cell data. Pass your session scratchpad instead.", file=sys.stderr)
+        return 2
+
+    try:
+        entry = models.MODELS[args.shortcut]
+    except KeyError:
+        print(f"ERROR: unknown shortcut {args.shortcut!r}. Available: "
+              f"{sorted(models.MODELS)}", file=sys.stderr)
+        return 2
+
+    model_id = entry["model_id"]
+    raw_dir_name = entry.get("raw_dir", "")
+    meta = {
+        "model_name": raw_dir_name or entry.get("name", args.shortcut),
+        "object_name": args.name,
+        "engine": _ENGINE_BY_RAW_DIR.get(raw_dir_name, "unknown"),
+        "workspace_label": "DEV" if args.shortcut in _DEV_SHORTCUTS else "PRODUCTION",
+        "view_id": "",
+    }
+
+    # open_session()'s only job is the credential/token exchange (it calls
+    # scrape_model_data._api_session(), which raises a plain RuntimeError on a
+    # bad/missing token - not an anaplan_session.AnaplanError). Any failure
+    # here is an auth-class failure by definition, so it is caught broadly and
+    # classified as exit 5 rather than surfacing as an unhandled traceback
+    # that falls outside this tool's exit-code taxonomy. This call is
+    # deliberately OUTSIDE the try/finally below: if it raises, no session was
+    # ever created, so there is nothing for `finally: session.close()` to
+    # leak and no risk of `finally` referencing an unbound `session` name.
+    try:
+        session = anaplan_session.open_session()
+    except Exception as e:
+        print(f"ERROR (auth): {e}\nToken refresh failed. Check .env credentials.",
+              file=sys.stderr)
+        return 5
+
+    base = session.base_url
+    try:
+        if args.command == "module":
+            view_id = None
+            try:
+                raw_dir = resolve_raw_dir(args.shortcut, models.MODELS)
+                view_id = find_view_id_offline(
+                    os.path.join(raw_dir, "Views.csv"), args.name)
+            except ValueError as e:
+                print(f"  (offline lookup unavailable: {e})", file=sys.stderr)
+            if not view_id:
+                print("  (resolving view ID via API)", file=sys.stderr)
+                view_id = find_view_id_via_api(session, base, model_id, args.name)
+            meta["view_id"] = view_id
+
+            view_meta = fetch_view_metadata(session, base, model_id, view_id)
+            # Guard against a stale offline ID resolving to a different module.
+            verify_resolved_name(args.name, view_meta.get("viewName", ""))
+
+            pages = build_pages_param(resolve_page_selection(
+                session, base, model_id, view_meta, parse_page_arg(args.page)))
+            grid = fetch_module(session, base, model_id, view_id, view_meta, pages)
+            check_grid_size(grid)
+            grid = narrow_rows(grid, [s.strip() for s in args.line_items.split(",")
+                                      if s.strip()])
+            grid = narrow_cols(grid, args.periods)
+        else:
+            list_id = find_list_id_via_api(session, base, model_id, args.name)
+            meta["view_id"] = list_id
+            grid = fetch_list_items(session, base, model_id, list_id)
+            check_grid_size(grid)
+
+        if grid.n_rows == 0:
+            safe_print(f"EMPTY: {args.name!r} resolved successfully "
+                       f"(id {meta['view_id']}) but the grid has no rows. This is "
+                       f"a real model state, not an error - do NOT read it as "
+                       f"'the formula produces nothing'.")
+            return 0
+
+        timestamp = time.strftime("%Y%m%dT%H%M%S")
+        full_path = write_full_csv(grid, args.out_dir, meta["model_name"],
+                                   args.name, timestamp)
+        safe_print(build_digest(grid, meta, args.sample, full_path))
+        return 0
+
+    except anaplan_session.AnaplanTooLargeError as e:
+        print(f"ERROR (too large): {e}\nNarrow with --page and retry.",
+              file=sys.stderr)
+        return 3
+    except GridTooLargeError as e:
+        print(f"ERROR (too large): {e}", file=sys.stderr)
+        return 3
+    except NameMismatchError as e:
+        print(f"ERROR (wrong grid): {e}", file=sys.stderr)
+        return 4
+    except anaplan_session.AnaplanAuthError as e:
+        print(f"ERROR (auth): {e}\nToken refresh failed. Check .env credentials.",
+              file=sys.stderr)
+        return 5
+    except anaplan_session.AnaplanTimeoutError as e:
+        print(f"ERROR (timeout): {e}\nThis is a timeout, NOT an empty grid.",
+              file=sys.stderr)
+        return 6
+    except (anaplan_session.AnaplanError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    finally:
+        session.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
