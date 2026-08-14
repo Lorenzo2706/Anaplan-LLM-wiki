@@ -1,9 +1,11 @@
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import fetch_model_data
 from fetch_model_data import (
     Grid,
     GridTooLargeError,
@@ -19,6 +21,7 @@ from fetch_model_data import (
     find_list_id_via_api,
     find_view_id_offline,
     find_view_id_via_api,
+    main,
     narrow_cols,
     narrow_rows,
     parse_page_arg,
@@ -698,3 +701,89 @@ def test_fetch_list_items_reads_listItems_key():
     grid = fetch_list_items(sess, "https://api.anaplan.com", "M1", "101000000012")
     assert grid.n_rows == 2
     assert grid.row_labels == [("Alpha",), ("Beta",)]
+
+
+# --- main()'s --out-dir repo guard -----------------------------------------
+#
+# Regression coverage for a review finding: the guard used to be
+# `os.path.abspath(args.out_dir).startswith(os.path.abspath(REPO_ROOT))`,
+# which is broken on Windows two ways - (1) abspath() does not normalize
+# case, so a repo-inside path differing only in casing slipped past the
+# guard entirely, and (2) a raw string prefix match incorrectly rejects a
+# sibling directory that merely shares a prefix with the repo root. These
+# tests drive the guard through main() itself (not a helper in isolation),
+# so a future refactor that reorders the guard is caught, and assert on the
+# real exit code (2) main() returns.
+
+FAKE_MODELS_FOR_MAIN = {
+    "fsp": {"name": "FSP", "raw_dir": "FSP 2.0", "model_id": "M1"},
+}
+
+
+class _OpenSessionCalled(Exception):
+    """Raised by a stubbed anaplan_session.open_session() to prove main()
+    reached the session-open step for a given --out-dir - i.e. the repo-path
+    guard did NOT reject it. Not a RuntimeError, so it propagates straight
+    out of main() instead of being caught by the auth except clause."""
+
+
+@pytest.fixture(autouse=True)
+def _stub_session_for_guard_tests(request, monkeypatch):
+    """Every out-dir-guard test in this module stubs open_session() and
+    models.MODELS UNCONDITIONALLY - including the tests that expect the
+    guard to REJECT the path. If the guard under test is broken (e.g. a
+    regression reintroducing the old raw startswith() comparison), a
+    "rejects" case can silently fall through past the guard; without this
+    stub that fallthrough would reach the real anaplan_session.open_session()
+    and make a live authenticated call to Anaplan using whatever .env
+    credentials happen to be present. Stubbing unconditionally means a broken
+    guard fails the test loudly (wrong return value / unexpected exception)
+    instead of ever reaching the network."""
+    if "out_dir_guard" not in request.node.name:
+        return
+    monkeypatch.setattr(fetch_model_data.models, "MODELS", FAKE_MODELS_FOR_MAIN)
+
+    def boom():
+        raise _OpenSessionCalled()
+
+    monkeypatch.setattr(fetch_model_data.anaplan_session, "open_session", boom)
+
+
+def test_out_dir_guard_rejects_path_inside_repo(capsys):
+    out_dir = os.path.join(fetch_model_data.REPO_ROOT, "raw", "models")
+    rc = main(["module", "fsp", "X", "--out-dir", out_dir])
+    assert rc == 2
+    assert "inside the repository" in capsys.readouterr().err
+
+
+def test_out_dir_guard_rejects_repo_root_itself(capsys):
+    rc = main(["module", "fsp", "X", "--out-dir", fetch_model_data.REPO_ROOT])
+    assert rc == 2
+    assert "inside the repository" in capsys.readouterr().err
+
+
+def test_out_dir_guard_rejects_differently_cased_path_inside_repo(capsys):
+    """The actual reported bug: os.path.abspath() does not normalize case on
+    Windows, so a repo-inside path differing only in drive-letter/segment
+    casing (routine with copy-pasted Windows/OneDrive paths) used to slip
+    past a raw str.startswith(abspath) comparison. Client data would then be
+    written into a OneDrive-synced repo - the exact failure the guard exists
+    to prevent."""
+    out_dir = os.path.join(fetch_model_data.REPO_ROOT, "raw", "models").upper()
+    rc = main(["module", "fsp", "X", "--out-dir", out_dir])
+    assert rc == 2
+    assert "inside the repository" in capsys.readouterr().err
+
+
+def test_out_dir_guard_allows_sibling_directory_sharing_prefix():
+    """A sibling directory like '...-backup' shares a string PREFIX with the
+    repo root but is not inside it on a path-component boundary - must not
+    be rejected."""
+    sibling = fetch_model_data.REPO_ROOT + "-backup"
+    with pytest.raises(_OpenSessionCalled):
+        main(["module", "fsp", "X", "--out-dir", sibling])
+
+
+def test_out_dir_guard_allows_genuinely_outside_path(tmp_path):
+    with pytest.raises(_OpenSessionCalled):
+        main(["module", "fsp", "X", "--out-dir", str(tmp_path)])

@@ -620,10 +620,37 @@ def build_arg_parser():
     return parser
 
 
+def _is_inside_repo(path, repo_root=REPO_ROOT):
+    """True if `path` is the repo root itself or anything under it.
+
+    Deliberately NOT `os.path.abspath(path).startswith(os.path.abspath(repo_root))`:
+    that raw-string check has two bugs on Windows, the platform this actually
+    runs on. First, `os.path.abspath()` does not normalize case, so a
+    repo-inside path that merely differs in drive-letter or segment casing
+    (routine with copy-pasted Windows/OneDrive paths) fails the `startswith`
+    and slips PAST the guard - the exact failure this guard exists to
+    prevent. Second, a raw prefix match is wrong the other way too: a sibling
+    directory that merely shares a string prefix with the repo root (e.g.
+    "...\\Anaplan LLM wiki-backup" next to "...\\Anaplan LLM wiki") would be
+    incorrectly REJECTED. Normalizing case and comparing on a path-component
+    boundary via `os.path.commonpath` fixes both directions.
+    """
+    target = os.path.normcase(os.path.abspath(path))
+    root = os.path.normcase(os.path.abspath(repo_root))
+    if target == root:
+        return True
+    try:
+        common = os.path.commonpath([target, root])
+    except ValueError:
+        # Different drives on Windows (e.g. D:\... vs C:\...) - never inside.
+        return False
+    return common == root
+
+
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
 
-    if os.path.abspath(args.out_dir).startswith(os.path.abspath(REPO_ROOT)):
+    if _is_inside_repo(args.out_dir):
         print(f"ERROR: --out-dir {args.out_dir!r} is inside the repository. "
               f"This repo is under OneDrive sync and must never hold client "
               f"cell data. Pass your session scratchpad instead.", file=sys.stderr)
@@ -646,18 +673,23 @@ def main(argv=None):
         "view_id": "",
     }
 
-    # open_session()'s only job is the credential/token exchange (it calls
-    # scrape_model_data._api_session(), which raises a plain RuntimeError on a
-    # bad/missing token - not an anaplan_session.AnaplanError). Any failure
-    # here is an auth-class failure by definition, so it is caught broadly and
-    # classified as exit 5 rather than surfacing as an unhandled traceback
-    # that falls outside this tool's exit-code taxonomy. This call is
-    # deliberately OUTSIDE the try/finally below: if it raises, no session was
-    # ever created, so there is nothing for `finally: session.close()` to
+    # open_session()'s only job is the credential/token exchange: it calls
+    # scrape_model_data._api_session() -> _anaplan_token(), and every raise
+    # site in that path (missing ANAPLAN_USERNAME/PASSWORD, unreachable token
+    # endpoint, failed token exchange) is a plain RuntimeError - never an
+    # anaplan_session.AnaplanError, which open_session() has no way to raise
+    # since it never touches AnaplanSession.get(). The catch is narrowed to
+    # exactly RuntimeError (verified by reading both call sites, not assumed)
+    # so that an ImportError/ModuleNotFoundError from the `import
+    # scrape_model_data` this function performs at call time - a broken
+    # dependency, a typo, anything unrelated to credentials - propagates
+    # instead of being confidently misreported as an auth failure. This call
+    # is deliberately OUTSIDE the try/finally below: if it raises, no session
+    # was ever created, so there is nothing for `finally: session.close()` to
     # leak and no risk of `finally` referencing an unbound `session` name.
     try:
         session = anaplan_session.open_session()
-    except Exception as e:
+    except RuntimeError as e:
         print(f"ERROR (auth): {e}\nToken refresh failed. Check .env credentials.",
               file=sys.stderr)
         return 5
