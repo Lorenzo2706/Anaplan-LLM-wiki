@@ -311,7 +311,7 @@ def narrow_rows(grid, line_items):
     return replace(
         grid,
         row_labels=[grid.row_labels[i] for i in keep],
-        cells=[grid.cells[i] for i in keep],
+        cells=[list(grid.cells[i]) for i in keep],
     )
 
 

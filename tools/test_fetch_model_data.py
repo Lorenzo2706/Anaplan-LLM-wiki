@@ -367,3 +367,26 @@ def test_narrow_cols_unknown_label_raises():
 
 def test_narrow_cols_empty_is_a_noop():
     assert narrow_cols(sample_grid(), "").n_cols == 3
+
+
+def test_narrow_rows_does_not_alias_row_lists_with_source():
+    """Later code holds a reference to the unnarrowed grid alongside the
+    narrowed one. If narrow_rows's returned Grid shares its inner row lists
+    with the source (e.g. `cells=[grid.cells[i] for i in keep]`, which copies
+    the outer list but reuses each inner row object), mutating a cell in the
+    narrowed grid silently corrupts the same cell in the original."""
+    grid = sample_grid()
+    original_value = grid.cells[0][1]
+    narrowed = narrow_rows(grid, ["Volume"])
+    narrowed.cells[0][1] = "MUTATED"
+    assert grid.cells[0][1] == original_value
+
+
+def test_narrow_cols_does_not_alias_row_lists_with_source():
+    """Same aliasing guarantee as narrow_rows, pinned here too so it cannot
+    silently regress in whichever of the two a future edit touches."""
+    grid = sample_grid()
+    original_value = grid.cells[0][0]
+    narrowed = narrow_cols(grid, "Jan 26")
+    narrowed.cells[0][0] = "MUTATED"
+    assert grid.cells[0][0] == original_value
