@@ -8,7 +8,9 @@ caller-supplied --out-dir (never a default location).
 
 NEVER write fetched cell values into wiki/, analyses/, or log.md. See CLAUDE.md.
 """
+import csv
 import os
+import re
 from dataclasses import dataclass, field
 
 
@@ -120,3 +122,106 @@ def resolve_raw_dir(shortcut, models_map, repo_root=REPO_ROOT):
             f"{path}. Check the folder name in models.py."
         )
     return path
+
+
+class NameMismatchError(Exception):
+    """The grid Anaplan returned is not the one that was asked for. Raised
+    instead of returning data, because validating a formula against the wrong
+    grid produces a confident wrong answer."""
+
+
+# Anaplan pads section-header rows with braille-blank (U+2800), non-breaking
+# space, and block emoji. Strip them before comparing names.
+_PADDING = re.compile(r"[⠀ \s◼️▪⬛]+")
+
+
+def _norm_name(value):
+    return _PADDING.sub(" ", (value or "")).strip().casefold()
+
+
+def find_view_id_offline(views_csv_path, module_name):
+    """Look up a module's DEFAULT view ID in an ingested Views.csv.
+
+    Returns None when the file is absent (raw/models/AAC has no Views.csv) or
+    the module is not listed (FSP 2.0's Views.csv covers 125 rows against 141
+    live views) - the caller then falls back to the live API.
+
+    A module's default view has ID == Module ID. Scans ALL matching rows before
+    settling, because a saved view with the same name may appear first and its
+    filtered/pivoted layout would silently return a different grid.
+    """
+    if not os.path.isfile(views_csv_path):
+        return None
+    want = _norm_name(module_name)
+    fallback = None
+    with open(views_csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            name = row.get("") or ""
+            if _norm_name(name) != want:
+                continue
+            view_id = (row.get("ID") or "").strip()
+            module_id = (row.get("Module ID") or "").strip()
+            if view_id and view_id == module_id:
+                return view_id
+            fallback = fallback or view_id or None
+    return fallback
+
+
+def find_view_id_via_api(session, base, model_id, module_name):
+    """Resolve a module name to its default view ID over the live API.
+
+    Required, not optional: raw/models/AAC has no Views.csv at all, and FSP's
+    CSV is 16 views short of the live model."""
+    body = session.get(f"{base}/2/0/models/{model_id}/views")
+    views = body.get("views") or []
+    want = _norm_name(module_name)
+    fallback = None
+    for v in views:
+        if _norm_name(v.get("name")) != want:
+            continue
+        vid, mid = str(v.get("id") or ""), str(v.get("moduleId") or "")
+        if vid and vid == mid:
+            return vid
+        fallback = fallback or vid or None
+    if fallback:
+        return fallback
+    raise ValueError(
+        f"No view named {module_name!r} exists in model {model_id}. "
+        f"{len(views)} views are available; check the module name spelling."
+    )
+
+
+def find_list_id_via_api(session, base, model_id, list_name):
+    """Resolve a list name to its ID over the live API.
+
+    Always the API: General Lists.csv has no ID column, so no offline source
+    for list IDs exists anywhere in the vault."""
+    body = session.get(f"{base}/2/0/models/{model_id}/lists")
+    lists = body.get("lists") or []
+    want = _norm_name(list_name)
+    for item in lists:
+        if _norm_name(item.get("name")) == want:
+            return str(item.get("id") or "")
+    raise ValueError(
+        f"No list named {list_name!r} exists in model {model_id}. "
+        f"{len(lists)} lists are available; check the spelling."
+    )
+
+
+def fetch_view_metadata(session, base, model_id, view_id):
+    """GET /views/{id} - the ONLY source of viewName, row/column dimension
+    names, and page dimension names+ids. The data payload has none of them."""
+    return session.get(f"{base}/2/0/models/{model_id}/views/{view_id}")
+
+
+def verify_resolved_name(requested, returned):
+    """Confirm Anaplan returned the grid we asked for. Raises rather than
+    returning data on mismatch - a stale offline ID must never silently
+    resolve to a different module."""
+    if _norm_name(requested) != _norm_name(returned):
+        raise NameMismatchError(
+            f"Asked Anaplan for {requested!r} but it returned {returned!r}. "
+            f"The cached ID is probably stale - re-scrape this model's CSVs. "
+            f"Refusing to return data that would be attributed to the wrong grid."
+        )
+    return None

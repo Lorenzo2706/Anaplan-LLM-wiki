@@ -3,7 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from fetch_model_data import Grid, parse_view_data, resolve_raw_dir
+from fetch_model_data import (
+    Grid,
+    NameMismatchError,
+    fetch_view_metadata,
+    find_list_id_via_api,
+    find_view_id_offline,
+    find_view_id_via_api,
+    parse_view_data,
+    resolve_raw_dir,
+    verify_resolved_name,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -124,3 +134,104 @@ def test_resolve_raw_dir_missing_folder_errors(tmp_path):
     with pytest.raises(ValueError) as exc:
         resolve_raw_dir("fsp", FAKE_MODELS, str(tmp_path))
     assert "FSP 2.0" in str(exc.value)
+
+
+# Row 2 is a SAVED view sharing the module's exact name with a different ID,
+# listed BEFORE the default view. Without it, nothing would exercise the
+# ID == Module ID preference and a naive first-match would pass.
+VIEWS_CSV = """﻿,ID,Module ID,Code
+⠀⠀⠀       ◼️ LOAD MODULES,102000000000,102000000000,
+REV 01. Revenue Calc,102000000099,102000000025,
+REV 01. Revenue Calc,102000000025,102000000025,
+CA 02. Cost Allocation,102000000031,102000000031,
+"""
+
+
+def write_views_csv(tmp_path):
+    p = tmp_path / "Views.csv"
+    p.write_text(VIEWS_CSV, encoding="utf-8")
+    return str(p)
+
+
+def test_find_view_id_offline_prefers_default_view_over_same_named_saved_view(tmp_path):
+    """A module's DEFAULT view has ID == Module ID. A saved view sharing the
+    name must never win: its filtered/pivoted layout would silently return a
+    different grid. The saved view is listed FIRST in the fixture so a naive
+    first-match implementation fails this test."""
+    assert find_view_id_offline(write_views_csv(tmp_path),
+                                "REV 01. Revenue Calc") == "102000000025"
+
+
+def test_find_view_id_offline_is_case_insensitive(tmp_path):
+    assert find_view_id_offline(write_views_csv(tmp_path),
+                                "rev 01. revenue calc") == "102000000025"
+
+
+def test_find_view_id_offline_strips_section_header_padding(tmp_path):
+    """Modules.csv/Views.csv contain section pseudo-rows padded with braille
+    blanks and emoji. They must still be findable by their bare name."""
+    assert find_view_id_offline(write_views_csv(tmp_path),
+                                "LOAD MODULES") == "102000000000"
+
+
+def test_find_view_id_offline_returns_none_when_absent(tmp_path):
+    assert find_view_id_offline(write_views_csv(tmp_path), "Nope") is None
+
+
+def test_find_view_id_offline_returns_none_when_file_missing(tmp_path):
+    """AAC has no Views.csv at all - this must fall through, not crash."""
+    assert find_view_id_offline(str(tmp_path / "Views.csv"), "Anything") is None
+
+
+class FakeSession:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
+
+    def get(self, url, timeout=180):
+        self.calls.append(url)
+        return self.payload
+
+
+def test_find_view_id_via_api_prefers_default_view():
+    sess = FakeSession(load_fixture("views_list_sample.json"))
+    got = find_view_id_via_api(sess, "https://api.anaplan.com", "M1",
+                               "REV 01. Revenue Calc")
+    assert got == "102000000025"
+
+
+def test_find_view_id_via_api_raises_when_absent():
+    sess = FakeSession(load_fixture("views_list_sample.json"))
+    with pytest.raises(ValueError) as exc:
+        find_view_id_via_api(sess, "https://api.anaplan.com", "M1", "Ghost Module")
+    assert "Ghost Module" in str(exc.value)
+
+
+def test_find_list_id_via_api():
+    sess = FakeSession(load_fixture("lists_sample.json"))
+    got = find_list_id_via_api(sess, "https://api.anaplan.com", "M1", "Afdeling")
+    assert got == "101000000013"
+
+
+def test_fetch_view_metadata_returns_the_metadata_payload():
+    sess = FakeSession(load_fixture("view_meta_sample.json"))
+    meta = fetch_view_metadata(sess, "https://api.anaplan.com", "M1", "102000000025")
+    assert meta["viewName"] == "REV 01. Revenue Calc"
+    assert sess.calls == [
+        "https://api.anaplan.com/2/0/models/M1/views/102000000025"]
+
+
+def test_verify_resolved_name_accepts_match():
+    assert verify_resolved_name("REV 01. Revenue Calc", "REV 01. Revenue Calc") is None
+
+
+def test_verify_resolved_name_tolerates_whitespace_and_case():
+    assert verify_resolved_name(" REV 01. Revenue Calc ", "rev 01. revenue calc") is None
+
+
+def test_verify_resolved_name_rejects_mismatch():
+    """The guard against silently validating a formula against the WRONG grid."""
+    with pytest.raises(NameMismatchError) as exc:
+        verify_resolved_name("REV 01. Revenue Calc", "CA 02. Cost Allocation")
+    assert "REV 01. Revenue Calc" in str(exc.value)
+    assert "CA 02. Cost Allocation" in str(exc.value)

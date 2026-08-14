@@ -1,0 +1,5 @@
+{"views": [
+  {"id": "102000000099", "name": "REV 01. Revenue Calc", "moduleId": "102000000025", "code": null},
+  {"id": "102000000025", "name": "REV 01. Revenue Calc", "moduleId": "102000000025", "code": null},
+  {"id": "102000000031", "name": "CA 02. Cost Allocation", "moduleId": "102000000031", "code": null}
+]}
