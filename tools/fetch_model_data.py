@@ -19,6 +19,27 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# `models` resolves every credential via `os.getenv(...)` at IMPORT TIME (see
+# the module-level `getenv(...)` calls in models.py), so `.env` must already
+# be loaded into os.environ before `import models` runs below. Normally that
+# happens as a side effect of importing `scraper_ux` (via `scrape_model_data`),
+# but this CLI must not eagerly `import scrape_model_data`/`scraper_ux` at
+# module top - that drags in Selenium at import time, which is slow and a
+# hard dependency this explicitly "no browser" tool must not require just to
+# parse --help. So `load_dotenv()` is called here, directly, ourselves.
+#
+# DO NOT let an import-sorter (isort/ruff/etc.) move `import models` above
+# this call. If it ever does, every value in models.MODELS silently reverts
+# to None instead of raising - this is the exact 2026-08-14 incident where a
+# live request went to ".../models/None/..." instead of failing loudly.
+try:
+    from dotenv import load_dotenv
+except ImportError:  # python-dotenv is optional; --help must not require it.
+    def load_dotenv(*args, **kwargs):
+        return False
+
+load_dotenv()
+
 import anaplan_session
 import models
 
