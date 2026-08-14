@@ -1,10 +1,7 @@
 import json
-import sys
 from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent))
 
 from fetch_model_data import Grid, parse_view_data
 
@@ -67,3 +64,23 @@ def test_parse_view_data_handles_multi_coordinate_axes():
     assert grid.row_labels == [("EMEA", "Volume")]
     assert grid.col_labels == ["Jan 26 / Actual", "Jan 26 / Budget"]
     assert grid.row_dim_names == ["Region", "Line Item"]
+
+
+def test_parse_view_data_normalizes_null_cell_to_none_too():
+    """How Anaplan represents a genuinely blank cell is UNVERIFIED against the
+    live API - every probed cell was a non-empty string, so "" is only an
+    assumption, not an observation. This test builds an inline payload where a
+    blank cell arrives as JSON null (the other plausible sentinel) instead of
+    "", and proves parse_view_data normalizes it to None exactly like the ""
+    case, while still keeping a real "0" distinct from either blank form."""
+    data = {
+        "pages": [],
+        "columnCoordinates": [["Jan 26"], ["Feb 26"]],
+        "rows": [{"rowCoordinates": ["Discount"], "cells": [None, "0"]}],
+    }
+    meta = {"viewName": "V", "viewId": "1",
+            "columns": [{"name": "Time", "id": "a"}],
+            "rows": [{"name": "Line Item", "id": "b"}],
+            "pages": []}
+    grid = parse_view_data(data, meta)
+    assert grid.cells[0] == [None, "0"]

@@ -35,9 +35,11 @@ class Grid:
 
 
 def _cell(raw):
-    """Anaplan sends every cell as a string; a blank arrives as "". Normalize to
-    None so downstream code has ONE blank sentinel and can still tell a blank
-    from a "0"."""
+    """Every probed cell came back as a non-empty string; how Anaplan represents
+    a genuinely BLANK cell is UNVERIFIED against the live API (never observed).
+    Assuming "" is the likely candidate, this defensively treats None, "", and
+    whitespace-only strings as blank -> None, so downstream code has ONE blank
+    sentinel and can still tell a blank from a "0"."""
     if raw is None:
         return None
     text = str(raw)
