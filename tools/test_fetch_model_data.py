@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from fetch_model_data import Grid, parse_view_data
+from fetch_model_data import Grid, parse_view_data, resolve_raw_dir
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -84,3 +84,43 @@ def test_parse_view_data_normalizes_null_cell_to_none_too():
             "pages": []}
     grid = parse_view_data(data, meta)
     assert grid.cells[0] == [None, "0"]
+
+
+FAKE_MODELS = {
+    "fsp": {"name": "FSP", "raw_dir": "FSP 2.0", "model_id": "M1"},
+    "umd": {"name": "UMD", "raw_dir": "AAC", "model_id": "M2"},
+    "broken": {"name": "Broken", "model_id": "M3"},
+}
+
+
+def test_resolve_raw_dir_uses_raw_dir_not_name(tmp_path):
+    (tmp_path / "raw" / "models" / "FSP 2.0").mkdir(parents=True)
+    got = resolve_raw_dir("fsp", FAKE_MODELS, str(tmp_path))
+    assert Path(got).name == "FSP 2.0"
+
+
+def test_resolve_raw_dir_handles_umd_to_aac(tmp_path):
+    """umd is a cost-category acronym (Uren/Materiaal/Diensten Derden), not a
+    model name - it points at AAC. No fuzzy match could find this."""
+    (tmp_path / "raw" / "models" / "AAC").mkdir(parents=True)
+    got = resolve_raw_dir("umd", FAKE_MODELS, str(tmp_path))
+    assert Path(got).name == "AAC"
+
+
+def test_resolve_raw_dir_unknown_shortcut_lists_valid_ones(tmp_path):
+    with pytest.raises(ValueError) as exc:
+        resolve_raw_dir("nope", FAKE_MODELS, str(tmp_path))
+    assert "fsp" in str(exc.value) and "umd" in str(exc.value)
+
+
+def test_resolve_raw_dir_missing_key_names_it(tmp_path):
+    with pytest.raises(ValueError) as exc:
+        resolve_raw_dir("broken", FAKE_MODELS, str(tmp_path))
+    assert "raw_dir" in str(exc.value)
+
+
+def test_resolve_raw_dir_missing_folder_errors(tmp_path):
+    (tmp_path / "raw" / "models").mkdir(parents=True)
+    with pytest.raises(ValueError) as exc:
+        resolve_raw_dir("fsp", FAKE_MODELS, str(tmp_path))
+    assert "FSP 2.0" in str(exc.value)

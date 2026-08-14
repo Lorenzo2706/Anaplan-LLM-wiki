@@ -8,6 +8,7 @@ caller-supplied --out-dir (never a default location).
 
 NEVER write fetched cell values into wiki/, analyses/, or log.md. See CLAUDE.md.
 """
+import os
 from dataclasses import dataclass, field
 
 
@@ -86,3 +87,36 @@ def parse_view_data(data_payload: dict, meta_payload: dict) -> Grid:
         available_page_dims=[d["name"] for d in page_dims if d.get("name")],
         page_dim_ids=page_dim_ids,
     )
+
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def resolve_raw_dir(shortcut, models_map, repo_root=REPO_ROOT):
+    """Map a models.py shortcut to its raw/models/<folder> path.
+
+    A dedicated `raw_dir` key is required because the shortcut names do NOT
+    match the folder names: `fsp` -> "FSP 2.0", and `umd` -> "AAC" because UMD
+    is a cost-category acronym (Uren / Materiaal / Diensten Derden), not a
+    model name. See wiki/models/AAC/index.md.
+    """
+    if shortcut not in models_map:
+        raise ValueError(
+            f"'{shortcut}' is not a configured shortcut. Available: "
+            f"{sorted(models_map)}"
+        )
+    entry = models_map[shortcut]
+    raw_dir = entry.get("raw_dir")
+    if not raw_dir:
+        raise ValueError(
+            f"models.MODELS['{shortcut}'] has no 'raw_dir' key. Add the "
+            f"raw/models/ folder name for this model, e.g. "
+            f"\"raw_dir\": \"FSP 2.0\"."
+        )
+    path = os.path.join(repo_root, "raw", "models", raw_dir)
+    if not os.path.isdir(path):
+        raise ValueError(
+            f"raw_dir '{raw_dir}' for shortcut '{shortcut}' does not exist at "
+            f"{path}. Check the folder name in models.py."
+        )
+    return path
