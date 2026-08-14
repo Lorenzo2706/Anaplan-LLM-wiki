@@ -11,7 +11,7 @@ NEVER write fetched cell values into wiki/, analyses/, or log.md. See CLAUDE.md.
 import csv
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 @dataclass
@@ -225,3 +225,134 @@ def verify_resolved_name(requested, returned):
             f"Refusing to return data that would be attributed to the wrong grid."
         )
     return None
+
+
+def parse_page_arg(spec):
+    """Parse --page "Product:Widget A,Region:EMEA" into {dimName: itemName}.
+
+    Splits each comma segment on its FIRST colon only, so item names that
+    themselves contain a colon (e.g. "1000: Revenue") survive intact."""
+    out = {}
+    for segment in (spec or "").split(","):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if ":" not in segment:
+            raise ValueError(
+                f"--page segment {segment!r} is malformed. Use Dimension:Item, "
+                f'e.g. --page "Product:Widget A,Region:EMEA".'
+            )
+        dim, item = segment.split(":", 1)
+        out[dim.strip()] = item.strip()
+    return out
+
+
+def resolve_page_selection(session, base, model_id, meta_payload, wanted):
+    """Translate {dimensionName: itemName} into {dimensionId: itemId}.
+
+    The API rejects name-based page selection outright:
+        pages=OPEX/CAPEX:CAPEX          -> 400 Malformed page parameters
+        pages=214000000002              -> 400 Malformed pages parameter
+        pages=101000000007:214000000002 -> 200   <-- the only accepted form
+    Dimension ids come from the view metadata; item ids need one
+    /lists/{dimId}/items call per selected dimension.
+    """
+    dims = {d.get("name"): str(d.get("id") or "")
+            for d in (meta_payload.get("pages") or []) if d.get("name")}
+    resolved = {}
+    for dim_name, item_name in (wanted or {}).items():
+        dim_id = next((i for n, i in dims.items()
+                       if _norm_name(n) == _norm_name(dim_name)), None)
+        if not dim_id:
+            raise ValueError(
+                f"{dim_name!r} is not a page dimension of this view. "
+                f"Available: {sorted(dims)}"
+            )
+        body = session.get(f"{base}/2/0/models/{model_id}/lists/{dim_id}/items")
+        # Verified 2026-08-14: the key is `listItems`, NOT `items`.
+        items = body.get("listItems") or []
+        item_id = next((str(it.get("id")) for it in items
+                        if _norm_name(it.get("name")) == _norm_name(item_name)), None)
+        if not item_id:
+            names = sorted(str(it.get("name")) for it in items)
+            raise ValueError(
+                f"{item_name!r} is not an item of page dimension {dim_name!r}. "
+                f"Available: {names[:40]}{' ...' if len(names) > 40 else ''}"
+            )
+        resolved[dim_id] = item_id
+    return resolved
+
+
+def build_pages_param(resolved):
+    """Render {dimensionId: itemId} as the API's pages= value. Sorted by
+    dimension id so the same request always produces the same URL."""
+    return ",".join(f"{d}:{resolved[d]}" for d in sorted(resolved or {}))
+
+
+def narrow_rows(grid, line_items):
+    """Keep only rows whose label tuple contains one of `line_items`.
+
+    Matches ANY component of the tuple, because a row label may combine a line
+    item with a list item. Output preserves the grid's own row order so the
+    digest layout is stable."""
+    if not line_items:
+        return grid
+    wanted = {_norm_name(n) for n in line_items}
+    keep = [i for i, labels in enumerate(grid.row_labels)
+            if any(_norm_name(part) in wanted for part in labels)]
+    matched = {_norm_name(part) for i in keep for part in grid.row_labels[i]}
+    missing = sorted(n for n in line_items if _norm_name(n) not in matched)
+    if missing:
+        available = sorted({part for labels in grid.row_labels for part in labels})
+        raise ValueError(
+            f"Line item(s) {missing} are not rows in this grid. Available rows: "
+            f"{available[:40]}{' ...' if len(available) > 40 else ''}"
+        )
+    return replace(
+        grid,
+        row_labels=[grid.row_labels[i] for i in keep],
+        cells=[grid.cells[i] for i in keep],
+    )
+
+
+def narrow_cols(grid, periods_spec):
+    """Keep only the named columns.
+
+    Two forms, both matching the labels exactly as Anaplan returns them:
+      "Jan 26,Mar 26"   explicit list
+      "Jan 26:Mar 26"   inclusive range by position
+    Label-based on purpose: no calendar parsing, so it works whatever format
+    the periods come back in.
+    """
+    spec = (periods_spec or "").strip()
+    if not spec:
+        return grid
+
+    index = {_norm_name(c): i for i, c in enumerate(grid.col_labels)}
+
+    def locate(label):
+        key = _norm_name(label)
+        if key not in index:
+            raise ValueError(
+                f"Period {label!r} is not a column in this grid. Available: "
+                f"{grid.col_labels}"
+            )
+        return index[key]
+
+    if ":" in spec:
+        start_label, end_label = spec.split(":", 1)
+        start, end = locate(start_label.strip()), locate(end_label.strip())
+        if start > end:
+            raise ValueError(
+                f"Period range start {start_label.strip()!r} comes after end "
+                f"{end_label.strip()!r} in this grid's column order."
+            )
+        keep = list(range(start, end + 1))
+    else:
+        keep = [locate(part.strip()) for part in spec.split(",") if part.strip()]
+
+    return replace(
+        grid,
+        col_labels=[grid.col_labels[i] for i in keep],
+        cells=[[row[i] for i in keep] for row in grid.cells],
+    )

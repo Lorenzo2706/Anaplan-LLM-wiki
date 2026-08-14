@@ -6,11 +6,16 @@ import pytest
 from fetch_model_data import (
     Grid,
     NameMismatchError,
+    build_pages_param,
     fetch_view_metadata,
     find_list_id_via_api,
     find_view_id_offline,
     find_view_id_via_api,
+    narrow_cols,
+    narrow_rows,
+    parse_page_arg,
     parse_view_data,
+    resolve_page_selection,
     resolve_raw_dir,
     verify_resolved_name,
 )
@@ -235,3 +240,130 @@ def test_verify_resolved_name_rejects_mismatch():
         verify_resolved_name("REV 01. Revenue Calc", "CA 02. Cost Allocation")
     assert "REV 01. Revenue Calc" in str(exc.value)
     assert "CA 02. Cost Allocation" in str(exc.value)
+
+
+def test_parse_page_arg_basic():
+    assert parse_page_arg("Product:Widget A,Region:EMEA") == {
+        "Product": "Widget A", "Region": "EMEA"}
+
+
+def test_parse_page_arg_value_may_contain_colon_and_spaces():
+    assert parse_page_arg("Account:1000: Revenue") == {"Account": "1000: Revenue"}
+
+
+def test_parse_page_arg_empty_returns_empty_dict():
+    assert parse_page_arg("") == {}
+    assert parse_page_arg(None) == {}
+
+
+def test_parse_page_arg_rejects_missing_colon():
+    with pytest.raises(ValueError) as exc:
+        parse_page_arg("Product")
+    assert "Dimension:Item" in str(exc.value)
+
+
+class FakeItemsSession:
+    """Returns list items for /lists/{id}/items - note the `listItems` key."""
+
+    def __init__(self):
+        self.calls = []
+
+    def get(self, url, timeout=180):
+        self.calls.append(url)
+        return {"listItems": [
+            {"id": "214000000001", "name": "Widget A"},
+            {"id": "214000000002", "name": "Widget B"},
+        ]}
+
+
+def test_resolve_page_selection_maps_names_to_ids():
+    """The API rejects name-based pages= with 400 Malformed page parameters.
+    Both sides must become numeric IDs."""
+    meta = load_fixture("view_meta_sample.json")
+    got = resolve_page_selection(FakeItemsSession(), "https://api.anaplan.com",
+                                 "M1", meta, {"Product": "Widget B"})
+    assert got == {"101000000007": "214000000002"}
+
+
+def test_resolve_page_selection_unknown_dimension_lists_available():
+    meta = load_fixture("view_meta_sample.json")
+    with pytest.raises(ValueError) as exc:
+        resolve_page_selection(FakeItemsSession(), "https://api.anaplan.com",
+                               "M1", meta, {"Ghost": "X"})
+    assert "Ghost" in str(exc.value) and "Product" in str(exc.value)
+
+
+def test_resolve_page_selection_unknown_item_lists_available():
+    meta = load_fixture("view_meta_sample.json")
+    with pytest.raises(ValueError) as exc:
+        resolve_page_selection(FakeItemsSession(), "https://api.anaplan.com",
+                               "M1", meta, {"Product": "Nonexistent"})
+    assert "Nonexistent" in str(exc.value) and "Widget A" in str(exc.value)
+
+
+def test_build_pages_param_uses_ids_and_is_deterministic():
+    """Sorted so identical requests produce byte-identical URLs, which keeps
+    runs reproducible."""
+    a = build_pages_param({"101000000019": "9", "101000000007": "1"})
+    b = build_pages_param({"101000000007": "1", "101000000019": "9"})
+    assert a == b == "101000000007:1,101000000019:9"
+
+
+def test_build_pages_param_empty_is_empty_string():
+    assert build_pages_param({}) == ""
+
+
+def test_narrow_rows_selects_named_line_items():
+    got = narrow_rows(sample_grid(), ["Volume", "Revenue"])
+    assert got.row_labels == [("Volume",), ("Revenue",)]
+    assert got.cells == [["100", "105", "110"], ["250", "262.5", "302.5"]]
+
+
+def test_narrow_rows_is_case_insensitive():
+    assert narrow_rows(sample_grid(), ["volume"]).row_labels == [("Volume",)]
+
+
+def test_narrow_rows_preserves_source_order():
+    """Output follows GRID order, not argument order, so the digest layout is
+    stable regardless of how the caller listed the line items."""
+    got = narrow_rows(sample_grid(), ["Revenue", "Volume"])
+    assert got.row_labels == [("Volume",), ("Revenue",)]
+
+
+def test_narrow_rows_empty_list_is_a_noop():
+    assert narrow_rows(sample_grid(), []).n_rows == 4
+
+
+def test_narrow_rows_unknown_name_raises_and_lists_available():
+    with pytest.raises(ValueError) as exc:
+        narrow_rows(sample_grid(), ["Ghost"])
+    assert "Ghost" in str(exc.value)
+    assert "Volume" in str(exc.value)
+
+
+def test_narrow_cols_explicit_list():
+    got = narrow_cols(sample_grid(), "Jan 26,Mar 26")
+    assert got.col_labels == ["Jan 26", "Mar 26"]
+    assert got.cells[0] == ["100", "110"]
+
+
+def test_narrow_cols_range_is_inclusive():
+    got = narrow_cols(sample_grid(), "Jan 26:Feb 26")
+    assert got.col_labels == ["Jan 26", "Feb 26"]
+    assert got.cells[2] == ["250", "262.5"]
+
+
+def test_narrow_cols_range_rejects_reversed_bounds():
+    with pytest.raises(ValueError) as exc:
+        narrow_cols(sample_grid(), "Mar 26:Jan 26")
+    assert "after" in str(exc.value).lower()
+
+
+def test_narrow_cols_unknown_label_raises():
+    with pytest.raises(ValueError) as exc:
+        narrow_cols(sample_grid(), "Jun 99")
+    assert "Jun 99" in str(exc.value)
+
+
+def test_narrow_cols_empty_is_a_noop():
+    assert narrow_cols(sample_grid(), "").n_cols == 3
