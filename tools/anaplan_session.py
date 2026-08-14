@@ -128,3 +128,61 @@ def classify_response(status_code, content_type, body_text, url=""):
             f"{(body_text or '')[:200]!r}"
         ) from e
     return None
+
+
+class AnaplanSession:
+    """Authenticated read-only HTTP. `get` is the ONLY verb by design."""
+
+    def __init__(self, base_url, requests_session):
+        self.base_url = base_url.rstrip("/")
+        self._sess = requests_session
+        self._refreshed = False
+
+    def _refresh(self):
+        """Swap in a session carrying a fresh Integration-API token."""
+        import scrape_model_data
+        self._sess = scrape_model_data._api_session()
+
+    def get(self, url, timeout=180):
+        """GET an allowlisted URL and return parsed JSON. Raises a typed
+        AnaplanError subclass on any failure - never returns {}."""
+        if not is_url_allowed(url):
+            raise AnaplanURLNotAllowedError(
+                f"Refusing to call {url!r}: not on the read-only allowlist. "
+                f"This tool may only read views, view metadata, lists, and list "
+                f"items, and only on {API_HOST}."
+            )
+        try:
+            resp = self._sess.get(url, timeout=timeout)
+        except requests.Timeout as e:
+            raise AnaplanTimeoutError(f"Timed out after {timeout}s calling {url}") from e
+        except requests.RequestException as e:
+            raise AnaplanError(f"Network failure calling {url}: {e}") from e
+
+        try:
+            classify_response(resp.status_code, resp.headers.get("Content-Type", ""),
+                              resp.text, url=url)
+        except AnaplanAuthError:
+            if self._refreshed:
+                raise
+            self._refreshed = True
+            self._refresh()
+            return self.get(url, timeout=timeout)
+
+        return resp.json()
+
+    def close(self):
+        try:
+            self._sess.close()
+        except Exception:
+            pass
+
+
+def open_session():
+    """Return an AnaplanSession backed by a fresh Integration-API token.
+
+    No cache and no browser: the token exchange takes about a second, so
+    caching would add a credential-equivalent file on disk for no real gain.
+    """
+    import scrape_model_data
+    return AnaplanSession(scrape_model_data.API_BASE, scrape_model_data._api_session())

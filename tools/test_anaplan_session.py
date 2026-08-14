@@ -1,8 +1,11 @@
 import pytest
+import requests
 
 from anaplan_session import (
     AnaplanAuthError,
     AnaplanError,
+    AnaplanSession,
+    AnaplanTimeoutError,
     AnaplanTooLargeError,
     AnaplanURLNotAllowedError,
     classify_response,
@@ -100,3 +103,88 @@ def test_classify_200_undecodable_body_raises():
 def test_too_large_error_carries_page_dimensions():
     err = AnaplanTooLargeError("too big", page_dimensions=["Product", "Region"])
     assert err.page_dimensions == ["Product", "Region"]
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, content_type="application/json", text='{"ok":1}'):
+        self.status_code = status_code
+        self.headers = {"Content-Type": content_type}
+        self.text = text
+
+    def json(self):
+        import json as _json
+        return _json.loads(self.text)
+
+
+class FakeRequests:
+    """Minimal stand-in for requests.Session. Only HTTP status codes are
+    simulated - no assumptions about Anaplan payload shapes."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def get(self, url, timeout=None):
+        self.calls.append(url)
+        item = self._responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def close(self):
+        pass
+
+
+def test_get_rejects_disallowed_url():
+    sess = AnaplanSession(BASE, FakeRequests([]))
+    with pytest.raises(AnaplanURLNotAllowedError):
+        sess.get(f"{BASE}/2/0/models/{MID}/exports/1/tasks")
+
+
+def test_get_returns_parsed_json():
+    fake = FakeRequests([FakeResponse(text='{"views":[]}')])
+    sess = AnaplanSession(BASE, fake)
+    assert sess.get(f"{BASE}/2/0/models/{MID}/views") == {"views": []}
+
+
+def test_get_maps_timeout_to_typed_error():
+    fake = FakeRequests([requests.Timeout("timed out")])
+    sess = AnaplanSession(BASE, fake)
+    with pytest.raises(AnaplanTimeoutError):
+        sess.get(f"{BASE}/2/0/models/{MID}/views")
+
+
+def test_get_raises_typed_error_on_undecodable_200():
+    """The observed 200-with-bad-body must surface as AnaplanError, never as a
+    bare JSONDecodeError escaping to the CLI."""
+    fake = FakeRequests([FakeResponse(text="")])
+    sess = AnaplanSession(BASE, fake)
+    with pytest.raises(AnaplanError):
+        sess.get(f"{BASE}/2/0/models/{MID}/views")
+
+
+def test_get_refreshes_token_once_then_succeeds():
+    """A 401 mid-run means the ~30 min token expired. One refresh, then retry."""
+    fake = FakeRequests([FakeResponse(status_code=401, text='{"m":"no"}'),
+                         FakeResponse(text='{"views":[]}')])
+    sess = AnaplanSession(BASE, fake)
+    calls = []
+    sess._refresh = lambda: calls.append("refresh")
+    assert sess.get(f"{BASE}/2/0/models/{MID}/views") == {"views": []}
+    assert calls == ["refresh"]
+
+
+def test_get_gives_up_after_second_auth_failure():
+    fake = FakeRequests([FakeResponse(status_code=401, text='{"m":"no"}'),
+                         FakeResponse(status_code=401, text='{"m":"no again"}')])
+    sess = AnaplanSession(BASE, fake)
+    sess._refresh = lambda: None
+    with pytest.raises(AnaplanAuthError):
+        sess.get(f"{BASE}/2/0/models/{MID}/views")
+
+
+def test_session_has_no_write_methods():
+    """Structural read-only guarantee from the design. If this fails, someone
+    added a write path - that must be a deliberate, reviewed decision."""
+    for verb in ("post", "put", "patch", "delete"):
+        assert not hasattr(AnaplanSession, verb)
