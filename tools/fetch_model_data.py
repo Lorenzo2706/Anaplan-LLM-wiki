@@ -289,6 +289,25 @@ def build_pages_param(resolved):
     return ",".join(f"{d}:{resolved[d]}" for d in sorted(resolved or {}))
 
 
+def _detached_passthrough_fields(grid):
+    """Copy every Grid field that neither narrow_rows nor narrow_cols rebuilds
+    itself (row_dim_names, page_selection, available_page_dims, page_dim_ids).
+
+    dataclasses.replace() only replaces the fields it is explicitly given;
+    every other field is carried over BY REFERENCE to the new instance. Later
+    stages keep a live reference to the un-narrowed grid, so a narrowed grid
+    that still points at the same list/dict objects would let an in-place
+    mutation on one grid (e.g. `narrowed.page_selection["X"] = "Y"`) silently
+    corrupt the other. Returning fresh containers here is what makes the
+    narrowed grid fully independent of its source."""
+    return {
+        "row_dim_names": list(grid.row_dim_names),
+        "page_selection": dict(grid.page_selection),
+        "available_page_dims": list(grid.available_page_dims),
+        "page_dim_ids": dict(grid.page_dim_ids),
+    }
+
+
 def narrow_rows(grid, line_items):
     """Keep only rows whose label tuple contains one of `line_items`.
 
@@ -312,6 +331,8 @@ def narrow_rows(grid, line_items):
         grid,
         row_labels=[grid.row_labels[i] for i in keep],
         cells=[list(grid.cells[i]) for i in keep],
+        col_labels=list(grid.col_labels),
+        **_detached_passthrough_fields(grid),
     )
 
 
@@ -355,4 +376,6 @@ def narrow_cols(grid, periods_spec):
         grid,
         col_labels=[grid.col_labels[i] for i in keep],
         cells=[[row[i] for i in keep] for row in grid.cells],
+        row_labels=list(grid.row_labels),
+        **_detached_passthrough_fields(grid),
     )

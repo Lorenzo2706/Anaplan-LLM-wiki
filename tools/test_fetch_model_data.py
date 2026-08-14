@@ -390,3 +390,110 @@ def test_narrow_cols_does_not_alias_row_lists_with_source():
     narrowed = narrow_cols(grid, "Jan 26")
     narrowed.cells[0][0] = "MUTATED"
     assert grid.cells[0][0] == original_value
+
+
+def test_narrow_rows_does_not_alias_col_labels_with_source():
+    """narrow_rows never rebuilds col_labels itself (only narrow_cols narrows
+    columns), so dataclasses.replace() would otherwise carry over the SAME
+    list object from the source grid. Appending to the narrowed grid's
+    col_labels must not resize the original's."""
+    grid = sample_grid()
+    original_cols = list(grid.col_labels)
+    narrowed = narrow_rows(grid, ["Volume"])
+    narrowed.col_labels.append("Apr 26")
+    assert grid.col_labels == original_cols
+
+
+def test_narrow_rows_does_not_alias_page_selection_with_source():
+    """page_selection is a passthrough dict untouched by narrow_rows's own
+    logic. Writing through the narrowed grid's copy must not leak into the
+    source grid that later code still holds a reference to."""
+    grid = sample_grid()
+    original_selection = dict(grid.page_selection)
+    narrowed = narrow_rows(grid, ["Volume"])
+    narrowed.page_selection["Product"] = "MUTATED"
+    assert grid.page_selection == original_selection
+
+
+def test_narrow_rows_does_not_alias_available_page_dims_with_source():
+    """available_page_dims is a passthrough list. Appending to the narrowed
+    grid's copy must not affect the source grid's list."""
+    grid = sample_grid()
+    original_dims = list(grid.available_page_dims)
+    narrowed = narrow_rows(grid, ["Volume"])
+    narrowed.available_page_dims.append("MUTATED")
+    assert grid.available_page_dims == original_dims
+
+
+def test_narrow_rows_does_not_alias_page_dim_ids_with_source():
+    """page_dim_ids is a passthrough dict, same aliasing risk as
+    page_selection."""
+    grid = sample_grid()
+    original_ids = dict(grid.page_dim_ids)
+    narrowed = narrow_rows(grid, ["Volume"])
+    narrowed.page_dim_ids["Product"] = "MUTATED"
+    assert grid.page_dim_ids == original_ids
+
+
+def test_narrow_rows_does_not_alias_row_dim_names_with_source():
+    """row_dim_names is a passthrough list, same aliasing risk as
+    available_page_dims."""
+    grid = sample_grid()
+    original_names = list(grid.row_dim_names)
+    narrowed = narrow_rows(grid, ["Volume"])
+    narrowed.row_dim_names.append("MUTATED")
+    assert grid.row_dim_names == original_names
+
+
+def test_narrow_cols_does_not_alias_row_labels_container_with_source():
+    """narrow_cols never rebuilds row_labels itself (only narrow_rows narrows
+    rows), so dataclasses.replace() would otherwise carry over the SAME outer
+    list object from the source grid. The individual tuple elements are
+    immutable and safe to share, but the list container itself must be
+    distinct: appending to the narrowed grid's row_labels must not resize the
+    original's."""
+    grid = sample_grid()
+    original_rows = list(grid.row_labels)
+    narrowed = narrow_cols(grid, "Jan 26")
+    narrowed.row_labels.append(("MUTATED",))
+    assert grid.row_labels == original_rows
+
+
+def test_narrow_cols_does_not_alias_page_selection_with_source():
+    """Same passthrough-dict aliasing guarantee as narrow_rows, pinned
+    independently for narrow_cols."""
+    grid = sample_grid()
+    original_selection = dict(grid.page_selection)
+    narrowed = narrow_cols(grid, "Jan 26")
+    narrowed.page_selection["Product"] = "MUTATED"
+    assert grid.page_selection == original_selection
+
+
+def test_narrow_cols_does_not_alias_available_page_dims_with_source():
+    """Same passthrough-list aliasing guarantee as narrow_rows, pinned
+    independently for narrow_cols."""
+    grid = sample_grid()
+    original_dims = list(grid.available_page_dims)
+    narrowed = narrow_cols(grid, "Jan 26")
+    narrowed.available_page_dims.append("MUTATED")
+    assert grid.available_page_dims == original_dims
+
+
+def test_narrow_cols_does_not_alias_page_dim_ids_with_source():
+    """Same passthrough-dict aliasing guarantee as narrow_rows, pinned
+    independently for narrow_cols."""
+    grid = sample_grid()
+    original_ids = dict(grid.page_dim_ids)
+    narrowed = narrow_cols(grid, "Jan 26")
+    narrowed.page_dim_ids["Product"] = "MUTATED"
+    assert grid.page_dim_ids == original_ids
+
+
+def test_narrow_cols_does_not_alias_row_dim_names_with_source():
+    """Same passthrough-list aliasing guarantee as narrow_rows, pinned
+    independently for narrow_cols."""
+    grid = sample_grid()
+    original_names = list(grid.row_dim_names)
+    narrowed = narrow_cols(grid, "Jan 26")
+    narrowed.row_dim_names.append("MUTATED")
+    assert grid.row_dim_names == original_names
