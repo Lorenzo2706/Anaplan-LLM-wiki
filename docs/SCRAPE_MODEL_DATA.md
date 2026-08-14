@@ -2,47 +2,95 @@
 
 Retrieves the model-settings export **mostly through Anaplan HTTP APIs** (no Dojo
 UI navigation), with **two grids exported via the Selenium UI** because the API
-can't deliver them reliably. The browser is used only to log in / hold the
-session and to drive those two UI exports.
+can't deliver them reliably. The REST calls need no browser at all; the browser
+exists only to hold a session for those two UI exports and for the classic
+core-webapp calls behind `--full`.
 
 `tools/scrape_model_data.py` is the single merged exporter. It contains both the
 fast API-driven path and the original pure-Selenium model-settings fallback (see
 [Pure-UI fallback](#pure-ui-fallback---ui-only) below).
 
-Three modes:
+Four modes:
 
 - **default (7 fast files)** → 5 files from Anaplan's REST API v2
   (`/2/0/models/{id}/...`) as JSON over plain `requests`, **plus** `Modules.csv`
   and `General Lists.csv` via the Selenium model-settings UI export.
 - **`--full` (all 15 files)** → the 7 default files **plus** the 8 legacy-engine
   grids over the **classic core-webapp API** (not the UI). One browser login.
+- **`--rest-only` (5 files, no browser)** → just the Integration-API files.
+  Nothing Selenium, nothing Dojo — the fastest formula/structure refresh, and
+  the isolated path to test when the REST pull misbehaves.
 - **`--ui-only` (13 UI files)** → the original pure-Selenium model-settings
   export path, useful for debugging or as a fallback if the API path changes.
 
 ```powershell
-python tools/scrape_model_data.py modela --name "ModelA"           # 7 fast files
-python tools/scrape_model_data.py modela --name "ModelA" --full    # all 15 files
-python tools/scrape_model_data.py modela --name "ModelA" --ui-only # pure UI fallback
+python tools/scrape_model_data.py modela --name "ModelA"             # 7 fast files
+python tools/scrape_model_data.py modela --name "ModelA" --full      # all 15 files
+python tools/scrape_model_data.py modela --name "ModelA" --rest-only # 5 files, no browser
+python tools/scrape_model_data.py modela --name "ModelA" --ui-only   # pure UI fallback
 python tools/scrape_model_data.py modela --out "C:/temp/modela_export"    # explicit folder
 ```
 
-## Why login still needs a browser
+## Authentication
 
-Basic Authentication may be disabled for the Integration API on your tenant: the
-token endpoint (`auth.anaplan.com/token/authenticate`) can reject `.env`
-credentials with `FAILURE_BAD_CREDENTIAL` even though the *same*
-username/password log in fine through the web UI (observed live, 2026-07-15).
-If no client certificate or OAuth client is configured either, a truly
-head-less run is **not possible** — it would need an Anaplan admin to
-enable OAuth2 or certificate auth. The tool reuses `scraper_ux.login` once, then
-lifts the browser session cookies for the REST calls and drives the classic-
-engine calls via `fetch()` in the authenticated iframe.
+The REST calls are **head-less** — no browser. They use the documented
+Integration-API flow:
+
+```
+POST https://auth.anaplan.com/token/authenticate   (Authorization: Basic <b64 user:pass>)
+  -> tokenInfo.tokenValue
+GET  https://api.anaplan.com/2/0/...               (Authorization: AnaplanAuthToken <token>)
+```
+
+Credentials come from `.env` (`ANAPLAN_USERNAME` / `ANAPLAN_PASSWORD`). The token
+lasts ~30 minutes, which covers a full export run.
+
+The browser is still required for the **Selenium UI export** (`Modules.csv`,
+`General Lists.csv`) and for the **classic core-webapp API** calls behind
+`--full`, both of which need a real authenticated session.
+
+> [!important] Use `https://api.anaplan.com`, never the regional app shard.
+> The app shard (`eu2a.app.anaplan.com/2/0/...`) redirects `/2/0/` to the global
+> `us1a` endpoint, which accepts **only** Integration-API auth and rejects web
+> session cookies with `401 {"status":{"code":401,"message":"Not Authenticated."}}`.
+
+### Incident: the 2026-08-13 empty-CSV export
+
+An earlier version authenticated the REST calls by lifting the logged-in
+browser's **session cookies** into a `requests.Session` and calling the app
+shard. That worked until ~2026-08-07, then started returning 401 on every
+endpoint, and the 2026-08-13 refresh wrote five empty CSVs over good exports.
+
+Two independent bugs, both fixed:
+
+1. **Wrong auth model.** Diagnosed live 2026-08-14: cookie auth against `/2/0/`
+   is dead from *every* transport — same-origin in-page `fetch`, `requests` +
+   lifted cookies, `api.anaplan.com` + cookies, and plain browser navigation all
+   returned the identical 401. The Anaplan web client never calls `/2/0/` itself,
+   so there was no client header to replay either. Fixed by switching to the
+   token flow above. A previous note claiming Basic auth was disabled for the
+   Integration API on this tenant (`FAILURE_BAD_CREDENTIAL`, 2026-07-15) is
+   **stale** — the token exchange succeeds and every endpoint returns 200.
+2. **Silent failure.** `_get()` swallowed any non-200/non-JSON response into
+   `{}`, so a 401 was indistinguishable from "this model has no data": every
+   builder produced 0 rows, those empty CSVs overwrote good exports, and the run
+   still printed `ok`. `_get()` now **raises** with the status and body snippet,
+   a failed pull leaves the existing file untouched, and a 0-row pull refuses to
+   overwrite a non-empty file. `--rest-only` also exits non-zero unless all 5
+   files are produced.
+
+Regression tests for the failure handling run offline — no tenant, no browser:
+
+```bash
+pytest tools/test_scrape_model_data.py
+```
 
 ## How the three paths work
 
 **REST API v2 (5 files).** Standard `GET /2/0/models/{id}/{lineItems|versions|
-actions|imports|views}` with the browser's session cookies lifted into a
-`requests.Session`. `Line Items.csv` is the rich one (formula, format,
+actions|imports|views}` against `https://api.anaplan.com`, token-authenticated
+over plain `requests` (see [Authentication](#authentication)). `Line Items.csv`
+is the rich one (formula, format,
 applies-to, summary, time scale/range, versions, style, cell count, is-summary,
 formula scope, use switchover, breakback, start of section, referenced-by,
 module name). A few columns the REST API doesn't expose are left blank
@@ -130,7 +178,8 @@ the tracked template to copy from on a fresh clone.
 
 ## When to use which mode
 
-- **Quick formula/structure refresh** → default mode (7 fast files).
+- **Quick formula/structure refresh** → `--rest-only` (5 files, no browser,
+  seconds) if you don't need module/list stats; otherwise default mode (7 files).
 - **Complete model export** → `--full` (all 15, one login). Recommended default
   for onboarding/refresh.
 - **Pure UI export / debugging a single grid in isolation** →

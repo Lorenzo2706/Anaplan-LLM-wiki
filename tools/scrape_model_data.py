@@ -33,27 +33,46 @@ from Anaplan HTTP APIs instead:
     the mechanism. A legacy grid that fails this path falls back to
     this script's UI export path for that one grid.
 
-Why the browser is still needed for login
-------------------------------------------
-This tenant has **Basic Authentication disabled for the Integration API**: the
-token endpoint (`auth.anaplan.com/token/authenticate`) rejects the `.env`
-credentials with FAILURE_BAD_CREDENTIAL even though the very same
-username/password log in fine through the web UI. There is no client
-certificate or OAuth client configured either. So a truly head-less
-(no-browser) run is not possible today — it would need an Anaplan admin to
-enable OAuth2 / certificate auth. We reuse `scraper_ux.login` (browser) once,
-lift the session cookies into a `requests.Session` for the REST calls, and drive
-the classic-engine calls via fetch() in the authenticated iframe. In practice
-the browser window is only open for the ~15-30 s login + a few seconds of API
-calls.
+Authentication
+--------------
+The REST API v2 calls are **fully head-less** — no browser involved. They
+authenticate the documented Integration-API way:
+
+    POST https://auth.anaplan.com/token/authenticate   (Authorization: Basic ...)
+      -> tokenInfo.tokenValue
+    GET  https://api.anaplan.com/2/0/...               (Authorization: AnaplanAuthToken ...)
+
+History / why this changed (2026-08-14). An earlier version of this module tried
+to authenticate the REST calls by lifting the logged-in browser's session
+cookies into a `requests.Session` and calling the **app shard**
+(`eu2a.app.anaplan.com/2/0/...`). That worked until ~2026-08-07 and then began
+returning `401 {"status":{"code":401,"message":"Not Authenticated."}}` for every
+endpoint. Diagnosed live 2026-08-14: the app shard now redirects `/2/0/` to the
+global `us1a` endpoint, which accepts only Integration-API auth and rejects web
+session cookies. Confirmed dead from *every* transport — same-origin in-page
+fetch, `requests` + lifted cookies, `api.anaplan.com` + cookies, and plain
+browser navigation all returned the identical 401 — and the Anaplan web client
+never calls `/2/0/` itself, so there was no client header to replay. A prior note
+in this file claimed Basic auth was disabled for the Integration API on this
+tenant (FAILURE_BAD_CREDENTIAL, observed 2026-07-15); that is **not** true as of
+2026-08-14 — the token exchange above succeeds and every endpoint returns 200.
+
+The browser is therefore needed only for:
+  • the Selenium model-settings UI export (Modules, General Lists), and
+  • the classic core-webapp API calls for the 8 legacy grids (`--full`),
+both of which are driven from a real authenticated session. Use `--rest-only`
+to run the 5 REST files with no browser at all.
 
 Modes
 -----
-  default  → 7 fast files (5 REST + Modules & General Lists via UI export).
-  --full   → all 15 files (5 REST + Modules & General Lists via UI + 8 classic-
-             API). A legacy grid that fails the classic-API path falls back to
-             this script's UI export path for that one grid, so coverage
-             never regresses.
+  default     → 7 fast files (5 REST + Modules & General Lists via UI export).
+  --full      → all 15 files (5 REST + Modules & General Lists via UI + 8
+                classic-API). A legacy grid that fails the classic-API path
+                falls back to this script's UI export path for that one grid,
+                so coverage never regresses.
+  --rest-only → just the 5 Integration-API files. No browser, no Selenium —
+                the fastest way to refresh formulas/structure, and the isolated
+                path to test when the REST pull misbehaves.
 
 Column fidelity: the produced CSVs reuse the exact blueprint column layout (first
 header cell blank, first data column = entity name). Modules, General Lists, and
@@ -486,38 +505,93 @@ def download_model_exports(model, out_dir=None, headless_download_dir=None, name
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  HTTP session (browser login once → cookies → requests)
+#  Integration API v2 session (token auth, no browser)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _session_from_browser(browser, base):
-    """Lift the logged-in browser's cookies + User-Agent into a requests.Session
-    so subsequent /2/0/ calls run over pure HTTP. The browser must already be
-    authenticated (scraper_ux.login). Does NOT close the browser."""
-    # Warm up on an app-shard URL so the API cookies are present, then lift.
-    browser.get(f"{base}/a/")
-    sess = requests.Session()
-    for c in browser.get_cookies():
-        sess.cookies.set(c["name"], c["value"],
-                         domain=c.get("domain"), path=c.get("path", "/"))
+# The Integration API is served from this global host. NOT the regional app shard
+# (eu2a/us1a/...): the app shard redirects /2/0/ to the global endpoint, which
+# rejects web-session cookies with 401. See the Authentication note at the top.
+API_BASE = "https://api.anaplan.com"
+
+AUTH_TOKEN_URL = "https://auth.anaplan.com/token/authenticate"
+
+
+def _anaplan_token():
+    """Exchange the .env credentials for an Integration-API bearer token.
+
+    Returns the token string. Raises RuntimeError with the tenant's own
+    statusMessage on failure, so a credential/permission problem is never
+    mistaken for "the model has no data".
+    """
+    import base64
+
+    user = os.getenv("ANAPLAN_USERNAME", "")
+    pwd = os.getenv("ANAPLAN_PASSWORD", "")
+    if not user or not pwd:
+        raise RuntimeError(
+            "ANAPLAN_USERNAME / ANAPLAN_PASSWORD missing from .env — required for "
+            "the Integration API token exchange."
+        )
+    basic = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode("ascii")
     try:
-        ua = browser.execute_script("return navigator.userAgent;")
+        r = requests.post(AUTH_TOKEN_URL,
+                          headers={"Authorization": f"Basic {basic}"}, timeout=60)
+    except Exception as e:
+        raise RuntimeError(f"token endpoint unreachable: {e}") from e
+
+    body = {}
+    try:
+        body = r.json()
     except Exception:
-        ua = ""
-    sess.headers.update({"Accept": "application/json"})
-    if ua:
-        sess.headers["User-Agent"] = ua
+        pass
+    token = ((body.get("tokenInfo") or {}).get("tokenValue")
+             if isinstance(body, dict) else None)
+    if not token:
+        raise RuntimeError(
+            f"Integration API token exchange failed (HTTP {r.status_code}, "
+            f"statusMessage={body.get('statusMessage')!r}). Basic auth may be "
+            f"disabled for the Integration API on this tenant, or the .env "
+            f"credentials are wrong/expired. Do NOT retry blindly — repeated "
+            f"failures can lock the account."
+        )
+    return token
+
+
+def _api_session():
+    """A requests.Session pre-authenticated for https://api.anaplan.com/2/0/.
+
+    No browser required. The token is valid ~30 min, which comfortably covers a
+    full export run.
+    """
+    sess = requests.Session()
+    sess.headers.update({
+        "Authorization": f"AnaplanAuthToken {_anaplan_token()}",
+        "Accept": "application/json",
+    })
     return sess
 
 
 def _get(sess, url):
-    """GET url and return parsed JSON, or {} on any non-JSON / error response."""
+    """GET url and return parsed JSON.
+
+    Raises RuntimeError on any non-200 / non-JSON response. This is deliberate:
+    the previous version swallowed every failure into `{}`, so a 401 produced a
+    valid-but-EMPTY CSV that silently overwrote good data while still reporting
+    "ok" (this is exactly how the 2026-08-13 export lost 5 files). A failed pull
+    must be loud.
+    """
     try:
         r = sess.get(url, timeout=180)
-        if r.status_code != 200 or "json" not in r.headers.get("Content-Type", ""):
-            return {}
-        return r.json()
-    except Exception:
-        return {}
+    except Exception as e:
+        raise RuntimeError(f"GET {url} failed: {e}") from e
+    if r.status_code != 200:
+        raise RuntimeError(f"GET {url} -> HTTP {r.status_code}: {r.text[:200]}")
+    if "json" not in r.headers.get("Content-Type", ""):
+        raise RuntimeError(
+            f"GET {url} -> non-JSON response "
+            f"(Content-Type={r.headers.get('Content-Type')!r}): {r.text[:200]}"
+        )
+    return r.json()
 
 
 def _list_field(body):
@@ -678,15 +752,32 @@ def _pull_api_files(sess, base, model_id, out_dir, results):
     delivers them too sparse to use, so they are produced via the Selenium UI
     export (see UI_ONLY_TARGETS / _export_targets_via_ui)."""
     def emit(filename, builder):
+        path = os.path.join(out_dir, filename)
         try:
             header, rows = builder()
-            path = os.path.join(out_dir, filename)
-            _write_csv(path, header, rows)
-            results[filename] = {"ok": True, "rows": len(rows), "path": path, "error": None}
-            print(f"  [API] ok  {filename:22} {len(rows):>5} rows")
         except Exception as e:
+            # Do NOT write anything: leave any existing file for this name intact
+            # rather than replacing good data with an empty CSV.
             results[filename] = {"ok": False, "rows": None, "path": None, "error": str(e)}
             print(f"  [API] ERR {filename:22} {e}")
+            print(f"  [API]     -> {filename} left untouched (not overwritten)")
+            return
+
+        # Defense in depth: a 0-row pull is legitimate for a genuinely empty grid,
+        # but must never silently clobber a file that already has content.
+        if not rows and os.path.exists(path) and os.path.getsize(path) > 200:
+            results[filename] = {
+                "ok": False, "rows": 0, "path": None,
+                "error": ("pulled 0 rows but existing file is non-empty — refusing "
+                          "to overwrite; re-run or verify the model really is empty"),
+            }
+            print(f"  [API] ERR {filename:22} 0 rows vs non-empty existing file "
+                  f"-> left untouched")
+            return
+
+        _write_csv(path, header, rows)
+        results[filename] = {"ok": True, "rows": len(rows), "path": path, "error": None}
+        print(f"  [API] ok  {filename:22} {len(rows):>5} rows")
 
     emit("Line Items.csv", lambda: build_line_items(sess, base, model_id))
     emit("Versions.csv",   lambda: build_versions(sess, base, model_id))
@@ -749,7 +840,7 @@ def _print_summary(model_name, results, mode):
     print(f"{'=' * 70}\n")
 
 
-def download_model_exports_api(model, out_dir=None, name=None):
+def download_model_exports_api(model, out_dir=None, name=None, rest_only=False):
     """Log in once (browser), then export the fast subset of model files:
       • 5 files over the REST API v2 (plain HTTP) — Line Items, Versions,
         Actions, Imports, Views.
@@ -774,21 +865,27 @@ def download_model_exports_api(model, out_dir=None, name=None):
     print(f"  Anaplan API model export — {model_name}")
     print(f"{'=' * 70}")
     print(f"  Output dir : {out_dir}")
-    print(f"  (5 files over REST/HTTP; Modules + General Lists via UI export)\n")
+    print(f"  (5 files over the Integration API — no browser"
+          f"{'' if rest_only else '; Modules + General Lists via UI export'})\n")
 
+    results = {}
+
+    # ── Phase 1: REST pull over the Integration API (token auth, no browser) ───
+    sess = _api_session()
+    _pull_api_files(sess, API_BASE, model_id, out_dir, results)
+
+    if rest_only:
+        _print_summary(model_name, results, "REST-only mode")
+        return results
+
+    # ── Phase 2: Modules + General Lists via the proven Selenium UI export ─────
     download_dir = tempfile.mkdtemp(prefix="anaplan_api_login_")
     browser = None
-    results = {}
     try:
         browser = scraper_ux._create_browser(download_dir)
         browser.set_script_timeout(120)
         scraper_ux.login(browser, config)
 
-        # ── REST API pull (cookies lifted from this same session) ──────────────
-        sess = _session_from_browser(browser, base)
-        _pull_api_files(sess, base, model_id, out_dir, results)
-
-        # ── Modules + General Lists via the proven Selenium UI export ──────────
         print(f"\n  → Exporting {len(UI_ONLY_TARGETS)} grid(s) via the model-"
               f"settings UI (REST too sparse): "
               f"{', '.join(fn for _n, _s, fn in UI_ONLY_TARGETS)}")
@@ -980,7 +1077,8 @@ def _pull_legacy_via_api(browser, base, model_id, ws, out_dir, results):
 
 def download_model_exports_full(model, out_dir=None, name=None):
     """Full 15-file export in ONE browser login:
-      • Phase 1 — the 5 REST-API files over plain HTTP (cookies lifted).
+      • Phase 1 — the 5 REST-API files over the Integration API (token auth,
+        no browser involved).
       • Phase 2 — the 8 legacy grids over the classic core-webapp API
         (jsonrpc VIEW_REQUEST_SET → PROGRESS → servlet), driven by fetch()
         inside the eu4 iframe. No Dojo UI navigation.
@@ -1010,13 +1108,13 @@ def download_model_exports_full(model, out_dir=None, name=None):
     browser = None
     results = {}
     try:
+        # ── Phase 1: REST pull over the Integration API (token auth, no browser)
+        sess = _api_session()
+        _pull_api_files(sess, API_BASE, model_id, out_dir, results)
+
         browser = scraper_ux._create_browser(download_dir)
         browser.set_script_timeout(120)
         scraper_ux.login(browser, config)
-
-        # ── Phase 1: REST API pull (cookies lifted from this same session) ──────
-        sess = _session_from_browser(browser, base)
-        _pull_api_files(sess, base, model_id, out_dir, results)
 
         # ── Phase 2: legacy grids over the classic core-webapp API (no UI) ──────
         print(f"\n  → Exporting {len(_LEGACY_TEMPLATES)} legacy grids over the "
@@ -1086,6 +1184,9 @@ def _main():
                         "7-file fast subset.")
     p.add_argument("--ui-only", action="store_true",
                    help="Run the original pure-Selenium 13-grid exporter from this merged script.")
+    p.add_argument("--rest-only", action="store_true",
+                   help="Export ONLY the 5 Integration-API files (Line Items, "
+                        "Versions, Actions, Imports, Views). No browser at all.")
     p.add_argument("--list-models", action="store_true",
                    help="Log in, fetch every model visible to this account, print JSON, and exit.")
     args = p.parse_args()
@@ -1104,9 +1205,17 @@ def _main():
 
     if args.full:
         results = download_model_exports_full(args.model, out_dir=args.out, name=args.name)
+        expected = None
     else:
-        results = download_model_exports_api(args.model, out_dir=args.out, name=args.name)
+        results = download_model_exports_api(args.model, out_dir=args.out,
+                                             name=args.name, rest_only=args.rest_only)
+        expected = 5 if args.rest_only else None
+
     produced = sum(1 for r in results.values() if r["ok"])
+    if expected is not None:
+        # --rest-only has a known target count, so a partial pull is a failure —
+        # never exit 0 on a half-empty export.
+        sys.exit(0 if produced == expected else 1)
     sys.exit(0 if produced else 1)
 
 
