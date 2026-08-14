@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,7 @@ import pytest
 from fetch_model_data import (
     Grid,
     NameMismatchError,
+    build_digest,
     build_pages_param,
     fetch_view_metadata,
     find_list_id_via_api,
@@ -17,7 +19,11 @@ from fetch_model_data import (
     parse_view_data,
     resolve_page_selection,
     resolve_raw_dir,
+    row_stats,
+    safe_print,
+    select_sample_indices,
     verify_resolved_name,
+    write_full_csv,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -497,3 +503,105 @@ def test_narrow_cols_does_not_alias_row_dim_names_with_source():
     narrowed = narrow_cols(grid, "Jan 26")
     narrowed.row_dim_names.append("MUTATED")
     assert grid.row_dim_names == original_names
+
+
+def test_sample_indices_returns_all_when_grid_is_small():
+    assert select_sample_indices(3, 10) == [0, 1, 2]
+
+
+def test_sample_indices_includes_first_and_last():
+    got = select_sample_indices(48, 3)
+    assert got[0] == 0 and got[-1] == 47
+
+
+def test_sample_indices_are_evenly_spaced_and_deterministic():
+    assert select_sample_indices(48, 3) == [0, 24, 47]
+    assert select_sample_indices(48, 3) == [0, 24, 47]
+
+
+def test_sample_indices_single_sample_takes_first():
+    assert select_sample_indices(48, 1) == [0]
+
+
+def test_sample_indices_never_duplicates():
+    got = select_sample_indices(4, 10)
+    assert got == sorted(set(got))
+
+
+def test_sample_indices_empty_grid():
+    assert select_sample_indices(0, 5) == []
+
+
+def test_row_stats_distinguishes_blank_from_zero():
+    """A blank cell and a zero cell are different facts when validating a
+    formula. Collapsing them would hide real bugs."""
+    stats = row_stats([None, "0", "5", None, "10"])
+    assert stats["blank"] == 2
+    assert stats["zero"] == 1
+    assert stats["min"] == 0.0
+    assert stats["max"] == 10.0
+    assert stats["numeric"] == 3
+
+
+def test_row_stats_all_blank():
+    stats = row_stats([None, None])
+    assert stats["blank"] == 2 and stats["min"] is None and stats["max"] is None
+
+
+def test_row_stats_ignores_non_numeric_text():
+    stats = row_stats(["abc", "5"])
+    assert stats["numeric"] == 1 and stats["max"] == 5.0
+
+
+def test_write_full_csv_writes_labels_and_values(tmp_path):
+    path = write_full_csv(sample_grid(), str(tmp_path), "FSP 2.0",
+                          "REV 01. Revenue Calc", "20260813T142530")
+    text = Path(path).read_text(encoding="utf-8-sig")
+    assert "Jan 26" in text and "Volume" in text and "100" in text
+    assert Path(path).parent == tmp_path
+
+
+def test_write_full_csv_filename_is_safe(tmp_path):
+    path = write_full_csv(sample_grid(), str(tmp_path), "FSP 2.0",
+                          'Bad/Name:With*Chars', "20260813T142530")
+    assert Path(path).exists()
+    for ch in '/\\:*?"<>|':
+        assert ch not in Path(path).name
+
+
+def test_write_full_csv_handles_non_ascii_labels(tmp_path):
+    """Live row coordinates include values like 'Financien' with a diaeresis."""
+    grid = replace(sample_grid(), row_labels=[("Financi\u00ebn",)] * 4)
+    path = write_full_csv(grid, str(tmp_path), "FSP 2.0", "M", "20260813T142530")
+    assert "Financi\u00ebn" in Path(path).read_text(encoding="utf-8-sig")
+
+
+DIGEST_META = {"model_name": "FSP 2.0", "object_name": "REV 01. Revenue Calc",
+               "view_id": "102000000025", "workspace_label": "DEV",
+               "engine": "Polaris"}
+
+
+def test_build_digest_contains_shape_and_sample():
+    digest = build_digest(sample_grid(), DIGEST_META, sample_n=3,
+                          full_path="C:/scratch/x.csv")
+    assert "REV 01. Revenue Calc" in digest
+    assert "4 rows x 3 cols" in digest
+    assert "Jan 26" in digest
+    assert "Volume" in digest
+    assert "Product=Widget A" in digest
+    assert "C:/scratch/x.csv" in digest
+
+
+def test_build_digest_reports_truncation_explicitly():
+    """Never let a sampled digest read as if it showed everything."""
+    digest = build_digest(sample_grid(), DIGEST_META, sample_n=2, full_path="x.csv")
+    assert "2 of 4" in digest
+
+
+def test_safe_print_survives_unencodable_console(monkeypatch):
+    """On a cp1252 console, printing 'Financien' with a diaeresis raises
+    UnicodeEncodeError - losing the result AFTER the data was already fetched."""
+    def boom(*a, **k):
+        raise UnicodeEncodeError("charmap", "x", 0, 1, "unmappable")
+    monkeypatch.setattr("builtins.print", boom)
+    safe_print("Financi\u00ebn")  # must not raise

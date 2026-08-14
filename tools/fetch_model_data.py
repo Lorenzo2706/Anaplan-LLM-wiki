@@ -11,6 +11,7 @@ NEVER write fetched cell values into wiki/, analyses/, or log.md. See CLAUDE.md.
 import csv
 import os
 import re
+import sys
 from dataclasses import dataclass, field, replace
 
 
@@ -379,3 +380,149 @@ def narrow_cols(grid, periods_spec):
         row_labels=list(grid.row_labels),
         **_detached_passthrough_fields(grid),
     )
+
+
+_UNSAFE_FILENAME = re.compile(r'[/\\:*?"<>|]+')
+
+
+def safe_print(text):
+    """Print text that may contain characters the console can't encode.
+
+    Live Anaplan row labels include values like 'Financien' (with a diaeresis).
+    On Windows the default console encoding is cp1252, and printing such text
+    raises UnicodeEncodeError - which would throw away the digest AFTER the
+    data had already been fetched from a live model. That is the worst place
+    to fail, so this degrades the unprintable characters instead of losing the
+    result.
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        enc = (getattr(sys.stdout, "encoding", None) or "ascii")
+        sys.stdout.write(text.encode(enc, "replace").decode(enc, "replace") + "\n")
+
+
+def select_sample_indices(n_rows, sample_n):
+    """Evenly spaced row indices, always including the first and last row.
+
+    Deterministic on purpose - the same fetch must produce the same sample on
+    every run, so a validation can be re-checked and reproduced.
+
+    Dedup invariant: once n_rows <= 0 and sample_n >= n_rows are handled above,
+    sample_n is strictly between 2 and n_rows - 1, so step = (n_rows-1) /
+    (sample_n-1) is strictly greater than 1. Two indices i < j then have real
+    positions i*step < j*step differing by more than 1, and since round() never
+    moves a value by more than 0.5, their rounded results cannot collide. The
+    `sorted({...})` below therefore never drops an index in practice for this
+    function's own call sites - it is a belt-and-braces guard, not a silent
+    truncation path.
+    """
+    if n_rows <= 0:
+        return []
+    if sample_n >= n_rows:
+        return list(range(n_rows))
+    if sample_n <= 1:
+        return [0]
+    step = (n_rows - 1) / (sample_n - 1)
+    return sorted({int(round(i * step)) for i in range(sample_n)})
+
+
+def row_stats(cells_row):
+    """Per-row fill and range stats.
+
+    Blank and zero are counted SEPARATELY: 'no value here' and 'the value is
+    zero' are different facts when validating a formula, and collapsing them
+    would hide a real class of bug. Non-numeric text is ignored rather than
+    raising, since a row may legitimately mix labels and numbers.
+    """
+    blank = zero = numeric = 0
+    lo = hi = None
+    for raw in cells_row:
+        if raw is None or str(raw).strip() == "":
+            blank += 1
+            continue
+        try:
+            val = float(str(raw).replace(",", ""))
+        except ValueError:
+            continue
+        numeric += 1
+        if val == 0:
+            zero += 1
+        lo = val if lo is None else min(lo, val)
+        hi = val if hi is None else max(hi, val)
+    return {"blank": blank, "zero": zero, "min": lo, "max": hi, "numeric": numeric}
+
+
+def write_full_csv(grid, out_dir, model_name, object_name, timestamp):
+    """Write the complete grid to out_dir and return the path.
+
+    out_dir is ALWAYS caller-supplied (the agent's session scratchpad), never a
+    default location inside this repo: the repo lives under OneDrive sync and
+    fetched cells are real client values. See CLAUDE.md and the module
+    docstring above.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    stem = _UNSAFE_FILENAME.sub("-", f"{model_name}-{object_name}-{timestamp}")
+    path = os.path.join(out_dir, f"{stem}.csv")
+    header = list(grid.row_dim_names or ["Row"]) + list(grid.col_labels)
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for labels, row in zip(grid.row_labels, grid.cells):
+            writer.writerow(list(labels) + ["" if c is None else c for c in row])
+    return path
+
+
+def _fmt(value):
+    return "" if value is None else str(value)
+
+
+def build_digest(grid, meta, sample_n, full_path):
+    """Compact, token-bounded stdout summary of a fetched grid.
+
+    Carries real labelled values so a formula can actually be checked, and
+    always states how much of the grid was sampled so a partial view can never
+    be mistaken for a complete one.
+    """
+    populated = sum(1 for row in grid.cells for c in row
+                    if c is not None and str(c).strip() != "")
+    total = grid.n_rows * grid.n_cols
+    pages = " | ".join(f"{d}={grid.page_selection[d]}"
+                       for d in sorted(grid.page_selection)) or "(none)"
+    indices = select_sample_indices(grid.n_rows, sample_n)
+
+    lines = [
+        f"OBJECT : {meta.get('object_name', '')}  (view {meta.get('view_id', '')})",
+        f"MODEL  : {meta.get('model_name', '')}  [{meta.get('workspace_label', '')}]"
+        f"  engine={meta.get('engine', 'unknown')}",
+        f"PAGES  : {pages}",
+        f"GRID   : {grid.n_rows} rows x {grid.n_cols} cols "
+        f"({total} cells, {populated} populated, {total - populated} blank)",
+        f"COLS   : {' | '.join(grid.col_labels)}",
+        f"SAMPLE : {len(indices)} of {grid.n_rows} rows "
+        f"(deterministic: evenly spaced, first and last always included)",
+    ]
+
+    label_width = max((len(" / ".join(grid.row_labels[i])) for i in indices),
+                      default=0)
+    for i in indices:
+        label = " / ".join(grid.row_labels[i]).ljust(label_width)
+        values = " | ".join(_fmt(c) for c in grid.cells[i])
+        lines.append(f"  {label} | {values}")
+
+    lines.append("STATS  : per sampled row")
+    for i in indices:
+        s = row_stats(grid.cells[i])
+        label = " / ".join(grid.row_labels[i]).ljust(label_width)
+        lines.append(
+            f"  {label} | blank={s['blank']} zero={s['zero']} "
+            f"numeric={s['numeric']} min={_fmt(s['min'])} max={_fmt(s['max'])}"
+        )
+
+    if grid.available_page_dims:
+        lines.append(f"NARROW : page dims available -> "
+                     f"{', '.join(grid.available_page_dims)}")
+    lines.append(f"FULL   : {full_path}")
+    lines.append("NOTE   : values above are live model data. Quote them in chat "
+                 "if useful, but never write them into wiki/, analyses/, or log.md.")
+    return "\n".join(lines)
