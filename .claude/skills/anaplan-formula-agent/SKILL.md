@@ -116,6 +116,81 @@ number of questions before proceeding. Never guess formats or dimensions.
 
 ---
 
+## Step 4 — Live Data Validation (optional, consent-gated)
+
+Blueprint CSVs tell you a formula is *structurally* sound. They cannot tell you
+it produces the *right numbers*. `tools/fetch_model_data.py` reads real cell
+values so you can check a recommendation against concrete examples.
+
+### Consent protocol — ask before the first fetch
+
+The first time validation would help **for a given model**, ask both questions at
+once:
+
+> "I can validate this against live **<Model>** data — I'd pull
+> `<Module>` for `<periods>` / `<page selection>` to confirm
+> `<the specific arithmetic>`. Two things: may I, and would you like me to ask
+> each time this session, or is blanket permission fine for **<Model>**?"
+
+Then:
+
+- **Blanket permission is scoped to that model.** When the conversation moves to
+  a different model, ask again. This is not pedantry: `fsp` is a DEV workspace
+  but `umd`, `mjp`, `old_fsp`, and `datahub` are **production**.
+- **Consent is never written to disk.** Hold it in conversation only.
+- Never fetch before consent. A fetch reads live production data.
+
+### How to fetch
+
+    python tools/fetch_model_data.py module <shortcut> "<Module Name>" \
+        --out-dir "<your session scratchpad>" \
+        --line-items "<the line items in the formula>" \
+        --periods "<a few periods>" --sample 5
+
+- `--out-dir` is **required** and must be your session scratchpad — never a path
+  inside the repo (it is under OneDrive sync). The tool refuses a repo path.
+- Shortcuts: `fsp` → FSP 2.0 (DEV, Polaris), `umd` → **AAC** (prod, Polaris),
+  `mjp` → MJP (prod, Classic), `old_fsp` → Old FSP (prod, Classic),
+  `datahub` → Data Hub 2.0 (prod, Classic).
+- Narrow aggressively. `--page` shrinks the actual fetch; `--line-items` and
+  `--periods` shrink the digest.
+- For a list: `python tools/fetch_model_data.py list <shortcut> "<List Name>" --out-dir ...`
+- Full contract: `docs/FETCH_MODEL_DATA.md`.
+
+### Cross-module formulas
+
+One module per call. For a cross-module formula (`SUM:`, `LOOKUP:`, dot-notation),
+fetch each module separately and align the coordinates **out loud**:
+
+> "CA 02, Jan 26, Widget A → 250. FS 01, Jan 26, EMEA → 250. EMEA rolls up
+> Widget A, so the `SUM:` ties."
+
+Do not present an alignment you have not stated. Dimension mismatch is exactly
+where cross-module formulas produce plausible-looking wrong numbers, and stating
+the correspondence is what lets the user catch a bad assumption.
+
+### Reading the output honestly
+
+- **Never write fetched values into `wiki/`, `analyses/`, or `log.md`.** Quote
+  them in chat as evidence; record elsewhere only that a validation ran, against
+  which model and module, and the verdict.
+- `EMPTY:` means the grid genuinely has no rows — normal in sparse Polaris
+  models. It does **not** mean the formula produces nothing, and it is **not**
+  a passing validation.
+- A non-zero exit is a real failure, never "no data". Exit 3 = too large (narrow
+  and retry), 4 = wrong grid returned (stale ID — re-scrape), 5 = auth,
+  6 = timeout.
+- Blank and zero are different findings. The digest counts them separately;
+  keep them separate in your reasoning too. Blank-cell representation **is
+  verified** against the live API (2026-08-14 probe of the raw `/data?format=v1`
+  payload: 2,688 cells, all JSON strings, 1,288 of them `""`, no `null` ever
+  returned) — Anaplan represents a blank as an empty string, and a blank count
+  from the digest can be trusted and reasoned from directly.
+- If the data contradicts your formula, **say so and revise**. A validation that
+  only ever confirms is worthless.
+
+---
+
 ## Core Syntax Rules
 
 - Line item names with hyphens, numbers, or operators (`+ - / *`) **must** be
