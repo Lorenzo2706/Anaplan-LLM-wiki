@@ -1,0 +1,10 @@
+{
+  "pages": ["Widget A", "EMEA"],
+  "columnCoordinates": [["Jan 26"], ["Feb 26"], ["Mar 26"]],
+  "rows": [
+    {"rowCoordinates": ["Volume"],   "cells": ["100", "105", "110"]},
+    {"rowCoordinates": ["Price"],    "cells": ["2.50", "2.50", "2.75"]},
+    {"rowCoordinates": ["Revenue"],  "cells": ["250", "262.5", "302.5"]},
+    {"rowCoordinates": ["Discount"], "cells": ["", "0", ""]}
+  ]
+}
