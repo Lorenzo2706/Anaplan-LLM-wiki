@@ -5,8 +5,9 @@
 
 ## Verified endpoint contract
 
-Established by live probe on 2026-08-14 against **FSP 2.0** (`fsp`, DEV_POLARIS
-workspace, Polaris engine). Observed, not inferred.
+Established by live probe on 2026-08-14 against a Polaris-engine model in a dev
+workspace (shortcut and workspace name omitted — this doc is a generic tool
+reference, not model-specific). Observed, not inferred.
 
 ### Authentication — token, not cookies
 
@@ -36,7 +37,7 @@ GET  https://api.anaplan.com/2/0/...               (Authorization: AnaplanAuthTo
 
 | Endpoint | Status | Notes |
 |---|---|---|
-| `GET /2/0/models/{modelId}/views` | 200 | `{"meta","status","views"}`; entry keys `code, id, name, moduleId`. FSP returned **142** views vs 125 rows in `Views.csv` on 2026-08-14 — the offline CSV is genuinely incomplete. (The exact live count will drift as the model changes; the gap between it and the static CSV is the point, not the specific integer.) |
+| `GET /2/0/models/{modelId}/views` | 200 | `{"meta","status","views"}`; entry keys `code, id, name, moduleId`. The probed model returned **142** views vs 125 rows in its `Views.csv` on 2026-08-14 — the offline CSV is genuinely incomplete. (The exact live count will drift as the model changes; the gap between it and the static CSV is the point, not the specific integer.) |
 | `GET /2/0/models/{modelId}/views/{viewId}` | 200 | Metadata. Returns `viewName`, `viewId`, `columns:[{name,id}]`, `rows:[{name,id}]`, `pages:[{name,id}]`. |
 | `GET /2/0/models/{modelId}/views/{viewId}/data` | **400** | `{"status":{"code":400,"message":"Mandatory query parameter 'format' is missing"}}` |
 | `GET /2/0/models/{modelId}/views/{viewId}/data?format=v1` | 200 | The cell data. **`format` is mandatory.** |
@@ -47,11 +48,11 @@ GET  https://api.anaplan.com/2/0/...               (Authorization: AnaplanAuthTo
 
 ```json
 {
-  "pages": ["OPEX", "Activering", "MJP - 2026 - 2030", "Plan exclusief inflatie"],
+  "pages": ["Version A", "Scenario B", "Plan 2026 - 2030", "Excl. adjustment"],
   "columnCoordinates": [["Jan 26"], ["Feb 26"], ["Mar 26"]],
   "rows": [
-    {"rowCoordinates": ["IT"],         "cells": ["<value>", "<value>", "<value>"]},
-    {"rowCoordinates": ["Financiën"],  "cells": ["<value>", "<value>", "<value>"]}
+    {"rowCoordinates": ["Dept A"], "cells": ["<value>", "<value>", "<value>"]},
+    {"rowCoordinates": ["Dept B"], "cells": ["<value>", "<value>", "<value>"]}
   ]
 }
 ```
@@ -82,7 +83,7 @@ Verified by probing three candidate syntaxes:
 
 | Form | Result |
 |---|---|
-| `pages={dimensionId}:{itemId}` e.g. `pages=101000000007:214000000002` | **200** — `pages` echo changed from `"OPEX"` to `"CAPEX"` |
+| `pages={dimensionId}:{itemId}` e.g. `pages=123000000001:456000000002` | **200** — `pages` echo changed from `"Version A"` to `"Version B"` |
 | `pages={itemId}` | 400 `Malformed pages parameter [214000000002]` |
 | `pages={dimName}:{itemName}` | 400 `Malformed page parameters` |
 
@@ -93,7 +94,7 @@ argument therefore needs a two-step resolution: dimension name → `id` from
 
 ### Non-JSON 200 responses are real
 
-While scanning FSP's default views, one returned HTTP 200 with a body that
+While scanning the probed model's default views, one returned HTTP 200 with a body that
 `response.json()` could not decode (`Expecting value: line 1 column 1 (char 0)`).
 A `Content-Type`-only check does **not** catch this. `classify_response` must
 also verify the body actually decodes, or the typed-error contract leaks a raw
@@ -101,7 +102,7 @@ also verify the body actually decodes, or the typed-error contract leaks a raw
 
 ### Non-ASCII data is present
 
-Row coordinates include values such as `Financiën`. On Windows the default
+Row coordinates can include accented characters (e.g. `Café`). On Windows the default
 console encoding is cp1252 and printing these raises `UnicodeEncodeError`,
 crashing the digest after a successful fetch.
 
@@ -150,10 +151,10 @@ Sampling is deterministic: evenly spaced rows, first and last always included.
 
 Verified 2026-08-14 against ~1,400 sampled cells: values come back as raw
 machine numbers with a **period** decimal separator and full float precision
-(e.g. `0.028999999999999915`, `-0.19417939074643778`, both illustrative
-inflation-rate formats, not values to treat as meaningful in isolation). **Not
-one comma appeared in any numeric value** — no thousands separators, no
-locale-specific formatting of any kind.
+(e.g. `0.028999999999999915`, `-0.19417939074643778` — illustrative decimal
+formats, not values to treat as meaningful in isolation). **Not one comma
+appeared in any numeric value** — no thousands separators, no locale-specific
+formatting of any kind.
 
 This matters because `row_stats` strips commas before parsing a value as a
 number (`str(raw).replace(",", "")`). Given the above, that strip is a **no-op
@@ -165,10 +166,11 @@ in practice** — there is no evidence Anaplan ever sends a European-style
 Module → view ID tries the ingested `raw/models/<raw_dir>/Views.csv` first, then
 falls back to the live API. The fallback is **not** an edge case:
 
-- `raw/models/AAC/` has **no `Views.csv`** — AAC always uses the API.
-- `FSP 2.0/Views.csv` covers 125 rows against **142 live views** (as of
-  2026-08-14 — the exact count will drift; the offline CSV being materially
-  incomplete is the durable fact).
+- At least one ingested model has **no `Views.csv`** at all — that model always
+  uses the API for view resolution.
+- Another ingested model's `Views.csv` covers 125 rows against **142 live
+  views** (as of 2026-08-14 — the exact count will drift; the offline CSV
+  being materially incomplete is the durable fact).
 - `General Lists.csv` has **no ID column**, so list resolution *always* uses the API.
 
 Only a module's **default** view is used (`ID == Module ID`). Saved views are
@@ -180,11 +182,11 @@ Whatever the path, `viewName` from `GET /views/{viewId}` is verified against the
 name asked for. A mismatch **raises** instead of returning data.
 
 **Gotcha: `GET /lists` does not expose Anaplan system lists.** Verified
-2026-08-14: FSP 2.0's `GET /lists` returns **38** lists. `Users` and `Versions`
-appear in `General Lists.csv` but are **absent** from the API response. Asking
-`fetch_model_data.py list fsp "Users"` therefore returns a correct-but-surprising
-`No list named 'Users' exists` error — that is expected API behavior, not a bug
-in the tool's list-resolution logic.
+2026-08-14: the probed model's `GET /lists` returns **38** lists. `Users` and
+`Versions` appear in `General Lists.csv` but are **absent** from the API
+response. Asking `fetch_model_data.py list <shortcut> "Users"` therefore
+returns a correct-but-surprising `No list named 'Users' exists` error — that is
+expected API behavior, not a bug in the tool's list-resolution logic.
 
 ## Error taxonomy
 
@@ -239,9 +241,9 @@ above `import models` in this file.
 `tools/anaplan_session.py` exposes exactly one HTTP verb, `get`. There is no
 `post`/`put`/`patch`/`delete` wrapper, every URL is checked against an
 allowlist pinned to `https://api.anaplan.com`, and
-`test_session_has_no_write_methods` fails if one is added. Four of five
-`models.py` shortcuts (`umd`, `mjp`, `old_fsp`, `datahub`) resolve to
-**production** workspaces.
+`test_session_has_no_write_methods` fails if one is added. Four of the five
+configured `models.py` shortcuts resolve to **production** workspaces; only
+one points at a dev workspace.
 
 ## Data handling rules
 
@@ -260,13 +262,13 @@ JSON-decode guard, name resolution, mismatch guard, page-ID resolution,
 narrowing, sampling, stats, digest — using **synthetic** fixtures. Fixtures are
 hand-written with fake values on purpose: `tools/` is committed and
 OneDrive-synced, so a captured real response must never be checked in. The live
-path is verified against `fsp` (the only DEV-workspace model).
+path is verified against the one dev-workspace shortcut.
 
 ## Known gaps
 
-- **Oversize behaviour is unverified.** No probed DEV view was large enough to
-  trigger a server-side size refusal (largest observed: 12,350 cells against a
-  `MAX_CELLS` of 50,000), so `_TOO_LARGE_MARKERS` is a guess.
+- **Oversize behaviour is unverified.** No probed dev-workspace view was large
+  enough to trigger a server-side size refusal (largest observed: 12,350 cells
+  against a `MAX_CELLS` of 50,000), so `_TOO_LARGE_MARKERS` is a guess.
   `check_grid_size` (client-side, `MAX_CELLS`) is the guard that is actually tested.
-- **The AAC (no-`Views.csv`) API-fallback path is untested** — exercising it means
+- **The no-`Views.csv` API-fallback path is untested** — exercising it means
   reading a production workspace. Deliberately not run.
