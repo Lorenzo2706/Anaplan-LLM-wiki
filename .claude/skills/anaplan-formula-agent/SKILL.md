@@ -342,13 +342,6 @@ headers. Columns may vary slightly — match by closest name.
 
 ## Reference Files
 
-- **`references/classic-vs-polaris.md`** — Full Classic vs Polaris function
-  diff table, behavioral differences, and migration notes. Read this whenever:
-  - The engine is Polaris or unknown
-  - A formula uses: POST, COLLECT, CUMULATE, LOOKUP, FINDITEM, SELECT, RANK,
-    OFFSET, LAG, or any time function
-  - The user asks about engine differences
-
 - **`references/polaris-function-compatibility.md`** — **Authoritative Polaris function
   compatibility table** built from all Anapedia source docs. Contains every function's
   Polaris status (available / unavailable / Polaris-only / caveats), grouped
