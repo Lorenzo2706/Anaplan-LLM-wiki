@@ -1,15 +1,8 @@
 /.env
 /.mcp.json
-/CLAUDE.md
 /.obsidian
-/raw/*
-!/raw/docs
-/raw/docs/*
-!/raw/docs/First setup
-/index.md
-/log.md
-/analyses
-/wiki
+/customers/
+/other-topics/
 /UI
 __pycache__/
 /docs/superpowers

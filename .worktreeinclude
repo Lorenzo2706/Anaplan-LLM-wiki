@@ -1,5 +1,4 @@
 # Local Environment
-.env 
+.env
 tools\models.py
-CLAUDE.md
-
+customers\registry.md
