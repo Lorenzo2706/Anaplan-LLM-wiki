@@ -1,0 +1,23 @@
+---
+title: Concepts — Index
+type: index
+tags: [anaplan, index, concepts]
+created: 2026-05-27
+updated: 2026-06-15
+---
+
+# Concepts — Index
+
+Top-level navigation for foundational Anaplan concepts. Two sub-collections plus a few flat pages.
+
+## Sub-collections
+
+- [[wiki/concepts/anaplan concepts/index|Anaplan core concepts]] — 22 pages: dimensions, lists, line items, hierarchies, time, versions, access/security, roles, picklists, modules, actions, etc.
+- [[wiki/concepts/anaplan-applications/demand-and-inventory/index|Demand & Inventory Reference App]] — 15-chapter walkthrough (Data Hub → Demand Analysis → Stat Forecasting → Demand Planning → Reporting → Inventory).
+
+## Flat pages
+
+- [[wiki/concepts/conditional-formatting|Conditional Formatting]] — gradient color scales on module/page cells; NUX Card config vs. classic module; form validation pattern
+- [[wiki/concepts/polaris-formula-patterns|Polaris Formula Patterns]] — all 22 Financial functions unavailable in Polaris; `START()` / `YEARFRAC` replacements; discovered 2026-06-09 during FSP 2.0 CA 23 build
+
+> Note: `Line Item`, `Dimensions`, and `Lists` no longer have separate flat pages — use the nested versions under [[wiki/concepts/anaplan concepts/index|anaplan concepts/]] ([[wiki/concepts/anaplan concepts/10_line-item|Line Item]], [[wiki/concepts/anaplan concepts/07_dimensions|Dimensions]], [[wiki/concepts/anaplan concepts/11_lists|Lists]]).
