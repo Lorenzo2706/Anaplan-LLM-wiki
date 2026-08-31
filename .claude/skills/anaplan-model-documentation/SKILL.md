@@ -19,6 +19,8 @@ description: >
 
 # Anaplan Model Documentation
 
+**Before anything else:** resolve `<CUSTOMER_ROOT>` for the model in question via `customers/registry.md`, per `CLAUDE.md` § Client Resolution. All paths below are relative to that resolved root.
+
 Produces a full Word documentation deliverable for one Anaplan model,
 following a fixed-but-flexible chapter structure. "Fixed" means the top-level
 chapter numbering and titles are the same for every model documented with
@@ -88,9 +90,9 @@ for the assembly step, not cosmetic.
 
 Before dispatching anything, pin down three things:
 
-1. **Which model, and is it in the wiki yet?** Check `wiki/models/<Model>/`
+1. **Which model, and is it in the wiki yet?** Check `<CUSTOMER_ROOT>/wiki/models/<Model>/`
    for an existing `index.md`. If it doesn't exist, this skill can still
-   work directly from `raw/models/<Model>/*.csv`, but the output will be
+   work directly from `<CUSTOMER_ROOT>/raw/models/<Model>/*.csv`, but the output will be
    thinner - tell the user the `wiki-data-ingestion` skill would give richer
    source material first, and let them decide whether to ingest first or
    proceed straight to documentation.
@@ -212,14 +214,14 @@ table reads well.
 
 ## Step 4 - Deliver
 
-- Save to `analyses/<Model>-Model-Documentation.docx` - never into `wiki/`,
-  per this vault's convention that non-wiki outputs live in `analyses/`.
+- Save to `<CUSTOMER_ROOT>/analyses/<Model>-Model-Documentation.docx` - never into `<CUSTOMER_ROOT>/wiki/`,
+  per this vault's convention that non-wiki outputs live in `<CUSTOMER_ROOT>/analyses/`.
 - If that filename is locked (the user has it open in Word - `cp`/`mv` will
   fail with a "resource busy" style error), don't force it: save alongside
   with a `-v2` suffix (or next available number) and tell the user which
   file is which, rather than silently overwriting or failing outright.
 - Add or update a "Key cross-references" pointer in
-  `wiki/models/<Model>/index.md` linking to the deliverable, so future wiki
+  `<CUSTOMER_ROOT>/wiki/models/<Model>/index.md` linking to the deliverable, so future wiki
   queries about this model surface the doc.
 - Report a summary in chat: chapters produced, notable tables/counts, every
   placeholder inserted (list them, don't just say "some placeholders

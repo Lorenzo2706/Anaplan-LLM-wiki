@@ -27,6 +27,8 @@ If the wiki has no index files and no conventions file, fall back to treating ev
 
 ## Step 1 — Scan the filesystem
 
+**Multi-domain scope:** this vault has four domain trees as of 2026-08-31 — `anaplan/`, each `customers/<Name>/`, and `other-topics/`. Run the full lint procedure (orphans, broken links, stale stats, contradictions) independently against each domain's own `index.md`/`log.md`/wiki pages — do not cross-check links between domains as if they shared one namespace, except to confirm a cross-domain `[[wiki link]]` (e.g. a customer model page linking to a shared `anaplan/wiki/functions/` page) actually resolves.
+
 List all markdown files (`.md`) under the wiki root. Exclude any paths the conventions say are non-wiki (e.g., raw source documents, immutable imports, auto-generated files). The result is the **ground truth set** of pages that exist.
 
 ```bash

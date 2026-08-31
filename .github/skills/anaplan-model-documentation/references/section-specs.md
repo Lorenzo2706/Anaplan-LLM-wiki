@@ -37,8 +37,8 @@ You are drafting part of a Word documentation deliverable for the "{MODEL}"
 Anaplan model. Vault root: `<vault path>`.
 
 READ FIRST:
-- `wiki/models/{MODEL}/index.md` - architecture overview, engine, roles summary
-- Any raw CSVs needed to firm up specific facts (`raw/models/{MODEL}/*.csv`)
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/index.md` - architecture overview, engine, roles summary
+- Any raw CSVs needed to firm up specific facts (`<CUSTOMER_ROOT>/raw/models/{MODEL}/*.csv`)
 
 STYLE MODEL - mirror this shape, not this wording:
 
@@ -95,15 +95,15 @@ You are drafting part of a Word documentation deliverable for the "{MODEL}"
 Anaplan model. Vault root: `<vault path>`.
 
 READ FIRST:
-- `wiki/models/{MODEL}/index.md` - calculation-flow diagram, roles summary
-- `wiki/models/{MODEL}/roles.md`, if it exists - full roles/access matrix.
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/index.md` - calculation-flow diagram, roles summary
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/roles.md`, if it exists - full roles/access matrix.
   Many models don't have a dedicated roles page - that's normal, not a gap
   to work around silently. If it's missing, check whether `index.md` has a
   roles summary section instead (several models fold this into the main
   page rather than splitting it out); if neither exists,
   `[PLACEHOLDER: role/access matrix not documented]` rather than guessing.
-- `wiki/models/{MODEL}/versions.md` (or equivalent) - versioning mechanism
-- `wiki/models/{MODEL}/actions.md` (or equivalent) - atomic actions, for
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/versions.md` (or equivalent) - versioning mechanism
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/actions.md` (or equivalent) - atomic actions, for
   admin/maintenance actions
 
 STYLE MODEL - mirror this shape:
@@ -169,9 +169,9 @@ You are drafting part of a Word documentation deliverable for the "{MODEL}"
 Anaplan model. Vault root: `<vault path>`.
 
 READ FIRST:
-- `wiki/models/{MODEL}/index.md` - architecture-at-a-glance, lists summary
-- `wiki/models/{MODEL}/lists.md` (or equivalent) - full list catalog
-- `raw/models/{MODEL}/General Lists.csv` - exact item counts if needed
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/index.md` - architecture-at-a-glance, lists summary
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/lists.md` (or equivalent) - full list catalog
+- `<CUSTOMER_ROOT>/raw/models/{MODEL}/General Lists.csv` - exact item counts if needed
 
 STYLE MODEL - mirror this shape:
 
@@ -229,9 +229,9 @@ You are drafting part of a Word documentation deliverable for the "{MODEL}"
 Anaplan model. Vault root: `<vault path>`.
 
 READ FIRST:
-- `wiki/models/{MODEL}/index.md` - architecture-at-a-glance table
-- `wiki/models/{MODEL}/modules.md` (or equivalent) - full module catalog
-- `raw/models/{MODEL}/Modules.csv` - exact names/counts if needed
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/index.md` - architecture-at-a-glance table
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/modules.md` (or equivalent) - full module catalog
+- `<CUSTOMER_ROOT>/raw/models/{MODEL}/Modules.csv` - exact names/counts if needed
 
 STYLE MODEL - mirror this shape:
 
@@ -295,9 +295,9 @@ You are drafting part of a Word documentation deliverable for the "{MODEL}"
 Anaplan model. Vault root: `<vault path>`.
 
 READ FIRST:
-- `wiki/models/{MODEL}/imports.md` (or equivalent) - import data sources
-- `wiki/models/{MODEL}/actions.md` (or equivalent) - full actions catalog
-- `raw/models/{MODEL}/Source Models.csv`, `Actions.csv` if more detail is
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/imports.md` (or equivalent) - import data sources
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/actions.md` (or equivalent) - full actions catalog
+- `<CUSTOMER_ROOT>/raw/models/{MODEL}/Source Models.csv`, `Actions.csv` if more detail is
   needed
 
 STYLE MODEL - mirror this shape:
@@ -352,8 +352,8 @@ doesn't exist yet - say so explicitly here and instruct the agent not to
 retry it, just to work from what's available and placeholder the rest.]
 
 READ FIRST:
-- `wiki/models/{MODEL}/index.md` - roles summary, architecture table
-- `raw/models/{MODEL}/Actions.csv` - action names often hint at
+- `<CUSTOMER_ROOT>/wiki/models/{MODEL}/index.md` - roles summary, architecture table
+- `<CUSTOMER_ROOT>/raw/models/{MODEL}/Actions.csv` - action names often hint at
   dashboard/page groupings
 - Any other {MODEL} wiki pages mentioning UX/dashboards/pages
 

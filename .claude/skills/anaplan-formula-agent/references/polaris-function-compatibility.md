@@ -1,6 +1,6 @@
 # Polaris Function Compatibility — Authoritative Reference
 
-**Source:** All Anapedia function pages in `raw/docs/` (scraped 2026-05-02).  
+**Source:** All Anapedia function pages in `<SHARED_ROOT>/raw/docs/` (scraped 2026-05-02).  
 **Rule:** Before suggesting any formula for a Polaris model, verify every function used is in the ✅ or ⚠️ columns below — never assume availability.
 
 ---
@@ -237,8 +237,8 @@ The existing `classic-vs-polaris.md` in this references folder contains inaccura
 | `PREVIOUS`/`NEXT` listed as "removed in Polaris" | ❌ Wrong. Both available in Polaris with expanded dimension support. Can't use on Formula summary LIs |
 | `COLLECT` listed as Polaris-only hierarchy aggregation | ❌ Wrong. `COLLECT()` is a line item subset function available in **both engines**. No separate hierarchy-COLLECT function exists in Anapedia |
 | `CUMULATE` listed as Polaris-only | ❌ Wrong. `CUMULATE` is available in **both Classic and Polaris** (with behavioral differences) |
-| `DISTRIBUTE` listed as Polaris-only | ⚠️ No Anapedia doc found in raw/docs — existence unconfirmed. Do not suggest until verified |
+| `DISTRIBUTE` listed as Polaris-only | ⚠️ No Anapedia doc found in `<SHARED_ROOT>/raw/docs` — existence unconfirmed. Do not suggest until verified |
 
 ---
 
-*Last updated: 2026-06-09. Source: `raw/docs/*Anapedia*.md`*
+*Last updated: 2026-06-09. Source: `<SHARED_ROOT>/raw/docs/*Anapedia*.md`*

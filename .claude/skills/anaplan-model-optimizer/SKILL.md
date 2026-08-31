@@ -25,6 +25,8 @@ description: >
 
 # Anaplan Model Optimizer
 
+**Before anything else:** resolve `<CUSTOMER_ROOT>` for the model in question via `customers/registry.md`, per `CLAUDE.md` § Client Resolution. All paths below are relative to that resolved root.
+
 Finds modules in a production Anaplan model that can likely be deleted, by
 combining two signals that neither one alone can safely provide:
 
@@ -33,7 +35,7 @@ combining two signals that neither one alone can safely provide:
    static CSV export).
 2. **Internal load-bearing-ness** - does the module feed other modules via
    formula, get written to by an import, or appear on a classic dashboard?
-   Comes from the model's raw CSV export (`raw/models/<Model>/Modules.csv` and
+   Comes from the model's raw CSV export (`<CUSTOMER_ROOT>/raw/models/<Model>/Modules.csv` and
    `Imports.csv`), which the NUX scrape cannot see.
 
 A module with zero NUX exposure is **not** automatically dead - Data, Load, and
@@ -45,14 +47,14 @@ the user to delete something that quietly breaks half the model.
 ## Step 1 - Identify the target model
 
 Ask which model to analyze if it isn't already clear from context. The
-cross-reference in Step 4 needs `raw/models/<Model Name>/Modules.csv` (and
+cross-reference in Step 4 needs `<CUSTOMER_ROOT>/raw/models/<Model Name>/Modules.csv` (and
 ideally `Imports.csv`) to already exist - these are the CSVs the
 `wiki-data-ingestion` skill produces from a model's own CSV export. Check the
 project's `CLAUDE.md` for its Engine defaults list (which models are
 currently ingested, and whether each is Classic or Polaris) - don't assume
 either engine, and ask the user if the model isn't listed there yet.
 
-If the requested model has no `raw/models/<Model Name>/` folder yet, tell the
+If the requested model has no `<CUSTOMER_ROOT>/raw/models/<Model Name>/` folder yet, tell the
 user Step 4's safety cross-check needs at least a `Modules.csv` export dropped
 there first (via the `wiki-data-ingestion` skill) - offer to proceed
 Excel-only in the meantime, but flag every result as unverified against
@@ -144,10 +146,10 @@ Run the bundled script:
 ```bash
 python .claude/skills/anaplan-model-optimizer/scripts/analyze_module_usage.py \
   --excel "<path to the NUX report .xlsx>" \
-  --model-dir "raw/models/<Model Name>" \
+  --model-dir "<CUSTOMER_ROOT>/raw/models/<Model Name>" \
   --model-name "<Model Name>" \
-  --out-json "analyses/<Model Name>-module-optimization-<YYYY-MM-DD>.json" \
-  --out-markdown "analyses/<Model Name>-module-optimization-<YYYY-MM-DD>.md"
+  --out-json "<CUSTOMER_ROOT>/analyses/<Model Name>-module-optimization-<YYYY-MM-DD>.json" \
+  --out-markdown "<CUSTOMER_ROOT>/analyses/<Model Name>-module-optimization-<YYYY-MM-DD>.md"
 ```
 
 This does the actual cross-referencing in code rather than by reading the
@@ -228,7 +230,7 @@ saved file. Modules first, then line items:
   then line items) if either is non-empty - these are model-owner-marked
   items that turned out to still be wired in, worth flagging as a cleanup
   gap even though this skill won't recommend deleting them outright.
-- Mention the full report was saved under `analyses/` per this project's
+- Mention the full report was saved under `<CUSTOMER_ROOT>/analyses/` per this project's
   convention for non-wiki outputs.
 - This skill only recommends. Never delete anything - the user removes
   modules or line items from the model themselves in Anaplan.

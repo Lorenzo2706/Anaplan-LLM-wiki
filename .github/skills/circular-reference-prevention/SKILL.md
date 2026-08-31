@@ -11,6 +11,8 @@ description: >
 
 # Circular Reference Prevention
 
+**Before anything else:** resolve `<CUSTOMER_ROOT>` for the model in question via `customers/registry.md`, per `CLAUDE.md` § Client Resolution. All paths below are relative to that resolved root.
+
 ## Overview
 
 A DISCO break is not "any circular-looking reference" — it is specifically a
@@ -96,7 +98,7 @@ reported — that's direct troubleshooting; use `anaplan-formula-agent`.
    time-shifted patterns, rejected mislabeling candidates, and data-quality
    flags — an audit that only shows positive findings looks like it skipped
    the hard cases.
-10. **Deliverable**: self-contained HTML to `analyses/<Model>-circular-
+10. **Deliverable**: self-contained HTML to `<CUSTOMER_ROOT>/analyses/<Model>-circular-
     reference-audit-<date>.html`, executive-summary-first (ranked findings
     table, readable in under a minute), then a drill-down per confirmed
     finding (diagram + formula table + concrete fix), then the negative-space

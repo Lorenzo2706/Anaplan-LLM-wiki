@@ -32,7 +32,7 @@ module's formatting rules isn't visible anywhere in the NUX scrape.
 
 Usage:
     python analyze_module_usage.py --excel "<path to NUX report.xlsx>" \
-        --model-dir "raw/models/<Model Name>" \
+        --model-dir "customers/<Customer Name>/raw/models/<Model Name>" \
         [--out-json report.json] [--out-markdown report.md]
 
 Always prints a markdown report to stdout.

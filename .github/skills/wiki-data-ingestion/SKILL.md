@@ -38,6 +38,39 @@ ingest, or a model data refresh?"*
 
 ---
 
+## Phase 0.5 — Resolve the domain
+
+Before reading or writing any path below, resolve which domain this ingest
+belongs to, per `CLAUDE.md` § Client Resolution:
+
+1. **Model CSV export** (Modules.csv, Line Items.csv, General Lists.csv,
+   Actions.csv, Model Calendar.csv, or any file inside a per-model
+   subfolder) → always customer-specific. Resolve `<CUSTOMER_ROOT>` via
+   `customers/registry.md` by model name; if the model isn't in the
+   registry yet, ask which customer it belongs to and add a row.
+2. **Diagnostic/error log** (from an import, action, or process) → always
+   customer-specific, same as a CSV export — lands in
+   `<CUSTOMER_ROOT>/logs/<Model>/`, a peer of `raw/`, never under
+   `raw/logs/`. Resolve `<CUSTOMER_ROOT>` the same way as step 1.
+3. **General source** (article, PDF, web clipping, plain-text doc) → ask
+   yourself: is this generic Anaplan tool knowledge (Anapedia,
+   best-practice, platform release notes)? → `<SHARED_ROOT>`. Is it tied
+   to one customer (their standards doc, a meeting note, a model-build
+   narrative)? → that customer's `<CUSTOMER_ROOT>`. Is it unrelated to
+   Anaplan? → `other-topics/`. If genuinely ambiguous, ask the user —
+   never guess when the wrong guess would publish customer data into the
+   tracked `anaplan/` tree.
+
+Every `raw/docs/`, `raw/models/`, `wiki/sources/`, `wiki/models/`,
+`wiki/concepts/`, `wiki/functions/`, `wiki/patterns/`, `analyses/`,
+`index.md`, and `log.md` reference elsewhere in this skill is relative to
+the domain root resolved here — `<SHARED_ROOT>` or the resolved
+`<CUSTOMER_ROOT>`, never the vault root directly. The one exception is
+`logs/`, which is always `<CUSTOMER_ROOT>/logs/` (never `<SHARED_ROOT>/logs/`
+— see step 2 above) and is never nested under `raw/`.
+
+---
+
 ## Phase 0A — Acquire file paths (Path A only)
 
 Before any reading or writing, you need to know exactly which files to ingest.
@@ -59,8 +92,6 @@ to Phase 1 with the provided paths.
   1. Read `wiki/sources/` index to build a set of already-ingested source slugs/filenames.
   2. Scan `raw/docs/`, `raw/models/`, and `raw/logs/` for files whose basenames do NOT
      appear in any existing `wiki/sources/` page (match on filename stem, case-insensitive).
-     **Skip `raw/docs/First setup/` entirely** — it's a curated onboarding bundle shared
-     with other makers, not new source material to ingest.
   3. Present the candidate list to the user:
      > "I found these files that don't appear to be ingested yet: [list]. Should I proceed
      > with all of them, or only some?"
@@ -172,7 +203,7 @@ For each batch, classify the source type and (for CSVs) determine first-time vs 
 or any file inside a `raw/models/<Model>/` subfolder.
 
 **General source batch** — anything else: articles, PDFs, web clippings, plain text docs,
-diagnostic logs under `raw/logs/`.
+diagnostic logs under `<CUSTOMER_ROOT>/logs/` (never nested under `raw/` — see Phase 0.5 above).
 
 ### Delta detection for model CSVs
 
