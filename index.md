@@ -11,8 +11,11 @@ page) is the core navigation structure of the vault; see CLAUDE.md §
 Layers, "Cascade principle" for the full rule.
 
 ## Customers
-- [[customers/Stedin/index|Stedin]] — 5 models (FSP 2.0, Old FSP, AAC, MJP, Data Hub 2.0). Gitignored.
-- [[customers/KWS/index|KWS]] — no models ingested yet. Gitignored.
+This section grows as customers are onboarded via the `project-setup` skill —
+each onboarded customer gets one `[[customers/<Name>/index]]` entry added here,
+following the cascade principle above. A fresh clone starts with no entries in
+this section. See `customers/registry.md` (gitignored, local-only) for the
+actual current customer → model → engine list.
 
 ## Shared knowledge
 - [[anaplan/index|anaplan/]] — generic Anaplan knowledge: functions, concepts, patterns, generic sources. Tracked in git, public.

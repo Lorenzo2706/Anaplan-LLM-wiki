@@ -17,7 +17,7 @@ This pattern has been used in production models with chained version dependencie
 
 ✅ Use version-as-list when you need:
 - Properties on a version (start/end year, source version, owner, export flag)
-- Hierarchy or chaining between versions ("this FSP is based on that MJP")
+- Hierarchy or chaining between versions (e.g. "this scenario is based on that upstream scenario")
 - Many scenarios with controlled memory (subset Applies To)
 - Variance/roll-forward via formulas (`LOOKUP` to "Previous Version")
 

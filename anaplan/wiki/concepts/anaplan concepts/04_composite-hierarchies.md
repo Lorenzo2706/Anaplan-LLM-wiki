@@ -124,4 +124,4 @@ This makes the **Parent Hierarchy** column entries immediately readable and redu
 - [[11_lists]] — list fundamentals, types, properties, and subsets
 - [[15_numbered-lists]] — integer-indexed lists; required for certain composite hierarchy leaf patterns
 - [[07_dimensions]] — how lists combine with Time and Versions to define module structure
-- [[Ragged hierarchy with per-level factors]] — the AAC-model ragged hierarchy pattern (per-level factors, Polaris)
+- [[Ragged hierarchy with per-level factors]] — ragged hierarchy pattern with per-level factors (Polaris)

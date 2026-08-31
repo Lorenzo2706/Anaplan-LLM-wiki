@@ -9,9 +9,9 @@ description: >
   work for <name>" — or whenever you notice `customers/registry.md` doesn't exist
   yet, which signals an unbootstrapped clone. Handles: creating the vault's empty
   domain skeleton (`anaplan/`, `customers/`, `other-topics/`), creating/extending
-  `customers/registry.md` with customer + model + engine rows, and verifying which
-  skills are present vs. still need installing from the Cowork skill store. Always
-  check current state first so re-running is a safe no-op.
+  `customers/registry.md` with customer + model + engine rows, and reporting which
+  of the eight project skills (all ship with the repo) are present under
+  `.claude/skills/`. Always check current state first so re-running is a safe no-op.
 ---
 
 # Project Setup — Bootstrap and Customer Onboarding
@@ -109,14 +109,11 @@ not this skill) or whether they mean a different, similarly-named customer.
 
 ## Phase 3 — Verify skills
 
-1. Report which of `anaplan-formula-agent`, `anaplan-module-mapping`,
-   `anaplan-model-optimizer`, `anaplan-model-documentation`,
-   `circular-reference-prevention` are present under `.claude/skills/` (they
-   ship with the repo, so normally all are).
-2. Check whether `wiki-lint` and `wiki-data-ingestion` are available (as
-   project-skill folders under `.claude/skills/`, or otherwise accessible via
-   the `Skill` tool). If missing, tell the user to install them from the
-   Cowork skill store and that ingest/lint won't work until they do.
+Report which of `anaplan-formula-agent`, `anaplan-module-mapping`,
+`anaplan-model-optimizer`, `anaplan-model-documentation`,
+`circular-reference-prevention`, `wiki-lint`, `wiki-data-ingestion`, and
+`project-setup` (this skill) are present under `.claude/skills/` — they all
+ship with the repo, so normally all 8 are.
 
 ---
 
@@ -131,10 +128,10 @@ End with a structured summary, always:
 **Shared skeleton:** [N directories created: <list> | already complete]
 **Customers set up this run:** [<Name> (folder + skeleton created, N model rows added to registry) | ...]
 **Registry:** customers/registry.md [created | extended with N new row(s)]
-**Skills present:** anaplan-formula-agent [✓/✗], anaplan-module-mapping [✓/✗], anaplan-model-optimizer [✓/✗], anaplan-model-documentation [✓/✗], circular-reference-prevention [✓/✗], wiki-lint [✓/✗], wiki-data-ingestion [✓/✗]
+**Skills present:** anaplan-formula-agent [✓/✗], anaplan-module-mapping [✓/✗], anaplan-model-optimizer [✓/✗], anaplan-model-documentation [✓/✗], circular-reference-prevention [✓/✗], wiki-lint [✓/✗], wiki-data-ingestion [✓/✗], project-setup [✓/✗]
 
 **Follow-ups for the user:**
-- [e.g. "add model/engine rows for <Customer> once the first CSV export lands", "install wiki-lint/wiki-data-ingestion from the Cowork skill store"]
+- [e.g. "add model/engine rows for <Customer> once the first CSV export lands"]
 ```
 
 If nothing is outstanding, say so explicitly: "Vault is fully set up — ready

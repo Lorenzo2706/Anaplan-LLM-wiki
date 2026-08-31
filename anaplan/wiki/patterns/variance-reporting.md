@@ -63,7 +63,7 @@ IF ISACTUALVERSION() THEN Actuals.Revenue ELSE Forecast.Revenue
 
 ## Approach 2: Variance WITHOUT native Versions
 
-For models that do not use the Versions dimension — including **version-as-list models** like FSP 2.0 and AAC — scenarios are stored in separate line items or accessed via list members. No Version dimension is involved.
+For models that do not use the Versions dimension — including **version-as-list models** — scenarios are stored in separate line items or accessed via list members. No Version dimension is involved.
 
 ### Line item per scenario
 
@@ -176,7 +176,7 @@ Used in the without-versions approach to extract a specific version's data into 
 | Criterion | Approach: native Versions | Approach: no Versions (LIS/line items) |
 |-----------|--------------------------|----------------------------------------|
 | Model uses native Versions dimension | Yes | Not applicable |
-| Polaris model (FSP 2.0, AAC) | Avoid — version block overhead | Preferred |
+| Polaris model | Avoid — version block overhead | Preferred |
 | Classic engine model | Viable | Viable |
 | Scenarios > ~10 | Not recommended | Preferred (version-as-list) |
 | User-selectable time comparison (any two months) | Needs SYS module + LOOKUP | SYS module + LOOKUP (same regardless) |
@@ -184,4 +184,4 @@ Used in the without-versions approach to extract a specific version's data into 
 | Reuse across many metrics | Version columns apply model-wide | LIS + COLLECT — explicit but flexible |
 
 > [!note]
-> FSP 2.0 and AAC are Polaris models using version-as-list. For those models, the without-versions LIS approach is the correct choice. Version formulas and `ISACTUALVERSION` are not available when Versions is not a model dimension.
+> For Polaris models using version-as-list, the without-versions LIS approach is the correct choice. Version formulas and `ISACTUALVERSION` are not available when Versions is not a model dimension.

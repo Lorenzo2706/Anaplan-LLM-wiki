@@ -137,9 +137,9 @@ For an alternative approach that avoids adding version members, see [[Variance R
 | **Polaris sparsity** | Can create unnecessary cell blocks at scale | Preferred for Polaris — sparse-friendly, avoids engine overhead |
 | **Flexibility** | Limited to Anaplan version features | Full list behavior: subsets, hierarchies, properties, LOOKUP |
 | **Max practical count** | ~10 before memory issues | Essentially unlimited |
-| **Used in FSP 2.0 / AAC** | No | Yes — both are Polaris models |
+| **Common in Polaris models** | Less common | Preferred |
 
 > [!note]
-> FSP 2.0 and AAC both use the version-as-list pattern. For Polaris models, version-as-list is generally preferred because it avoids the block-structure overhead that native Versions impose.
+> For Polaris models, version-as-list is generally preferred because it avoids the block-structure overhead that native Versions impose.
 
 See [[Pattern — Version-as-list (custom-list scenarios)]] for the full design pattern.

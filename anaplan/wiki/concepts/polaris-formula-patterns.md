@@ -9,7 +9,7 @@ sources: []
 
 # Polaris Formula Patterns
 
-Critical function availability and replacement patterns for Polaris models (FSP 2.0, AAC). Complements [[wiki/patterns/planual/02-engine|Planual Ch.2 — Polaris]].
+Critical function availability and replacement patterns for Polaris models. Complements [[wiki/patterns/planual/02-engine|Planual Ch.2 — Polaris]].
 
 > [!warning] Financial functions are entirely unavailable in Polaris
 > All 22 functions in Anaplan's Financial category fail silently with "formula is invalid" in Polaris — no descriptive error is shown. Replace with date arithmetic (see below).
