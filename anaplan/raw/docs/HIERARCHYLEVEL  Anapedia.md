@@ -3,14 +3,14 @@ title: "HIERARCHYLEVEL | Anapedia"
 source: "https://help.anaplan.com/hierarchylevel-fb423834-dfce-4add-bbb5-0526148e818a"
 author:
 published:
-created: 2026-05-02
+created: 2026-08-31
 description: "Use HIERARCHYLEVEL to find a coordinate's position in a given list. Given a value in a line item, this function uses its coordinate to identify its level in the specified list. This can help you ‌determine how far the item is from the root (top-level ancestor) or from the furthest leaf (bottom-level descendant) in the list."
 tags:
   - "clippings"
 ---
 [All functions](https://help.anaplan.com/all-functions-160769b0-de37-4f08-87a0-cc3aa55525a3 "All functions")
 
-Use `HIERARCHYLEVEL` to find a coordinate's position in a given list. Given a value in a line item, this function uses its coordinate to identify its level in the specified list. This can help you ‌determine how far the item is from the root (top-level ancestor) or from the furthest leaf (bottom-level descendant) in the list.
+Use HIERARCHYLEVEL to find a coordinate's position in a given list. Given a value in a line item, this function uses its coordinate to identify its level in the specified list. This can help you ‌determine how far the item is from the root (top-level ancestor) or from the furthest leaf (bottom-level descendant) in the list.
 
 `HIERARCHYLEVEL(List[, Direction[, Level type]])`
 
@@ -113,4 +113,4 @@ The following module has three line items:
 | North America | 2 | 4 | 2 | 2 |
 | All regions | 1 | 5 | 1 | 1 |
 
-<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.23.1/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fhierarchylevel-fb423834-dfce-4add-bbb5-0526148e818a&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>
+<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.25.2/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;device=desktop&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fhierarchylevel-fb423834-dfce-4add-bbb5-0526148e818a&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>

@@ -3,7 +3,7 @@ title: "CUMIPMT | Anapedia"
 source: "https://help.anaplan.com/cumipmt-2f6eca23-c0b6-4b4b-a68c-1def28d2dab6"
 author:
 published:
-created: 2026-05-02
+created: 2026-08-31
 description: "The CUMIPMT function calculates the cumulative interest paid on a loan over a period given equal payments made to the balance."
 tags:
   - "clippings"
@@ -14,7 +14,7 @@ The CUMIPMT function calculates the cumulative interest paid on a loan over a pe
 
 For example, you can use the CUMIPMT function to see how much interest is paid during different periods for a loan.
 
-`CUMIPMT(Interest rate, Number of periods, Principal, Start period, End period [, Timing])`
+`CUMIPMT(Interest rate, Number of periods, Principal, Start period, End period[, Timing])`
 
 | **Argument** | **Data type** | **Description** |
 | --- | --- | --- |
@@ -56,4 +56,4 @@ Each item in the *Scenario* list uses the same value for the *Interest rate*, *N
 | Timing | 0 | 1 | 0 | 0 | 0 | 0 |
 | Cumulative interest paid  `CUMIPMT(Interest rate, Number of periods, Loan balance, Start period, End period, Timing)` | \-7,500 | 0 | \-349.59 | \-92,465.29 | \-42,211.51 | \-129,998.77 |
 
-<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.23.1/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fcumipmt-2f6eca23-c0b6-4b4b-a68c-1def28d2dab6&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>
+<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.25.2/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;device=desktop&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fcumipmt-2f6eca23-c0b6-4b4b-a68c-1def28d2dab6&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>

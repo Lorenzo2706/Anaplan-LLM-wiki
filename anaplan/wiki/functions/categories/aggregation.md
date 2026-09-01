@@ -11,7 +11,7 @@ updated: 2026-05-02
 Use the `Source[FUNC: Mapping, ...]` selector syntax to roll values up from a source [[wiki/concepts/anaplan concepts/10_line-item|line item]] into a target via mapping line items. The target's dimensionality determines the grain of the result.
 
 ## Members
-**SUM, AVERAGE, MIN, MAX, ANY, ALL, FIRSTNONBLANK, LASTNONBLANK, TEXTLIST**
+**SUM, AVERAGE, MIN, MAX, ANY, ALL, FIRSTNONBLANK, LASTNONBLANK, TEXTLIST, VARP, VARS**
 
 ## When to use which
 | Need | Function |
@@ -22,6 +22,8 @@ Use the `Source[FUNC: Mapping, ...]` selector syntax to roll values up from a so
 | Boolean rollups | `ANY` (OR-style), `ALL` (AND-style) |
 | Pick a representative non-blank value | `FIRSTNONBLANK`, `LASTNONBLANK` |
 | Concatenate text into one cell | `TEXTLIST` |
+| Spread of a rolled-up value (population) | `VARP` (Polaris-only) |
+| Spread of a rolled-up value (sample) | `VARS` (Polaris-only) |
 
 ## Pattern
 - A common dimension must connect source and mapping.

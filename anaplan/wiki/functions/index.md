@@ -6,14 +6,15 @@ tags:
   - functions
   - reference
 created: 2026-05-02
-updated: 2026-05-02
+updated: 2026-08-31
 sources:
   - wiki/sources/2026-05-02-anapedia-all-functions.md
+  - wiki/sources/2026-08-31-anapedia-variance-aggregation.md
 ---
 
 # Anaplan Functions —  Index
 
-All 145 Anaplan formula functions, organized by category. Each row links to the raw Anapedia clipping. Category overviews live under [[wiki/functions/categories/index|wiki/functions/categories]].
+All 147 Anaplan formula functions, organized by category. Each row links to the raw Anapedia clipping. Category overviews live under [[wiki/functions/categories/index|wiki/functions/categories]].
 
 > Source: [[wiki/sources/2026-05-02-anapedia-all-functions|Anapedia — All Functions]]
 
@@ -31,6 +32,8 @@ Source-to-target aggregation using `[FUNC: Mapping, ...]` selector syntax.
 | MIN (agg) | `Source[MIN: Mapping, ...]` | Min value per group. [[raw/docs/MIN (Aggregation function)\|raw]] |
 | SUM | `Values[SUM: Mapping, ...]` | Sum values into result module by mapping. [[raw/docs/SUM  Anapedia\|raw]] |
 | TEXTLIST (agg) | `Values[TEXTLIST: Mapping, ...]` | Concat values to comma-separated string. [[raw/docs/TEXTLIST (Aggregation function)\|raw]] |
+| VARP | `Source[VARP: Mapping, ...]` | Population variance per group. Polaris-only. [[raw/docs/VARP aggregation function\|raw]] |
+| VARS | `Source[VARS: Mapping, ...]` | Unbiased sample variance per group. Polaris-only. [[raw/docs/VARS aggregation function\|raw]] |
 
 ## Mapping functions  ([[wiki/functions/categories/mapping|overview]])
 Cross-module value retrieval. ⚠️ Never combine SUM and LOOKUP in one formula.

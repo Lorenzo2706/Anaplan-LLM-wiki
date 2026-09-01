@@ -8,7 +8,7 @@ one customer's build, it belongs in `customers/<Name>/index.md` instead.
 - [[wiki/concepts/index|Concepts index]] — 22 core concept pages + 2 flat pages + Demand & Inventory Reference App sub-collection (15 chapters)
 
 ## Functions
-- [[wiki/functions/index|Functions index]] — all 145 Anaplan formula functions across 10 categories (Aggregation, Mapping, Time/Date, Logical, Numeric, Text, Financial, Trigonometry, Call Center, Misc)
+- [[wiki/functions/index|Functions index]] — all 147 Anaplan formula functions across 10 categories (Aggregation, Mapping, Time/Date, Logical, Numeric, Text, Financial, Trigonometry, Call Center, Misc)
 
 ## Patterns
 - [[wiki/patterns/index|Patterns index]] — 7 standalone patterns (DISCO, circular reference, data loading best practices, version-as-list, ragged hierarchy, number format standard, variance reporting) + Planual (8 chapters) + The Anaplan Way (7 pages)

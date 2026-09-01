@@ -16,3 +16,23 @@ Verified clean (no fix needed):
 Flagged, not fixed (needs a human/data decision, no fabrication):
 - `wiki/functions/index.md` row for **ACOSH**: links to `raw/docs/ACOSH  Anapedia` which does not exist anywhere in the vault, even though every sibling hyperbolic-function raw doc (ASINH, ATANH, COSH, SINH, TANH) does. Looks like the ACOSH Anapedia page was never actually clipped/ingested despite being listed. Needs either the missing raw doc ingested or the dead raw-source link removed from that row.
 
+## [2026-08-31] ingest | Anapedia clippings batch (10 function docs) from Clippings/
+Source: 11 files landed in `Clippings/` (10 Anapedia function pages + 1 unrelated GitHub Copilot article, logged separately under `other-topics/log.md`).
+
+Discovered mid-ingest that 8 of the 10 Anapedia clippings (AGENTS, AGENTSB, CUMIPMT, DECUMULATE, ERLANGB, ERLANGC, HIERARCHYLEVEL, MDURATION) already existed in `raw/docs/` from the 2026-05-02 bulk ingest, with revised content (Anaplan updated the underlying help pages — added Classic/Polaris behavior tables, reworded argument descriptions, expanded examples; no syntax or semantic changes). Confirmed with user to overwrite the 8 raw docs in place (consistent with how this vault already handles CSV re-uploads) and touch wiki only where descriptions changed.
+
+Created:
+- wiki/sources/2026-08-31-anapedia-variance-aggregation.md (first-time: VARP, VARS)
+- wiki/sources/2026-08-31-anapedia-call-center-refresh.md (AGENTS, AGENTSB, ERLANGB, ERLANGC)
+- wiki/sources/2026-08-31-anapedia-financial-refresh.md (CUMIPMT, MDURATION)
+- wiki/sources/2026-08-31-anapedia-decumulate-refresh.md (DECUMULATE)
+- wiki/sources/2026-08-31-anapedia-hierarchylevel-refresh.md (HIERARCHYLEVEL)
+
+Updated:
+- raw/docs/AGENTS  Anapedia.md, AGENTSB  Anapedia.md, CUMIPMT  Anapedia.md, DECUMULATE  Anapedia.md, ERLANGB  Anapedia.md, ERLANGC  Anapedia.md, HIERARCHYLEVEL  Anapedia.md, MDURATION  Anapedia.md — overwritten in place with refreshed Anapedia content
+- raw/docs/VARP aggregation function.md, VARS aggregation function.md — new
+- wiki/functions/index.md — added VARP/VARS rows, function count 145 → 147, sources frontmatter extended
+- wiki/functions/categories/aggregation.md — added VARP/VARS to Members and When-to-use table
+- wiki/functions/categories/index.md, index.md — function count 145 → 147
+- wiki/sources/index.md — new 2026-08 section, 5 entries
+

@@ -9,7 +9,7 @@ sources: [wiki/sources/2026-05-02-anapedia-all-functions.md]
 
 # Function Categories — Index
 
-Category overview pages for the 145 Anaplan formula functions catalogued in [[wiki/functions/index|the functions index]]. Each overview compares functions within the category and notes when-to-use guidance; the master functions index has the full per-function table with syntax and links to raw Anapedia clippings.
+Category overview pages for the 147 Anaplan formula functions catalogued in [[wiki/functions/index|the functions index]]. Each overview compares functions within the category and notes when-to-use guidance; the master functions index has the full per-function table with syntax and links to raw Anapedia clippings.
 
 - [[wiki/functions/categories/aggregation|Aggregation]]
 - [[wiki/functions/categories/mapping|Mapping]]

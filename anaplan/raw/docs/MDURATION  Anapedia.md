@@ -3,7 +3,7 @@ title: "MDURATION | Anapedia"
 source: "https://help.anaplan.com/mduration-611e8dae-c597-4ce3-b0af-149391c39c50"
 author:
 published:
-created: 2026-05-02
+created: 2026-08-31
 description: "You can use the MDURATION function to calculate the modified Macauley duration for an assumed parity value of 100 monetary units.The modified Macauley duration expresses the measurable change in the value of a bond in response to a change in interest rates. The result represents the effect that a 1% change in interest rates will have on the price of a bond."
 tags:
   - "clippings"
@@ -14,7 +14,7 @@ You can use the MDURATION function to calculate the modified Macauley duration f
 
 The modified Macauley duration expresses the measurable change in the value of a bond in response to a change in interest rates. The result represents the effect that a 1% change in interest rates will have on the price of a bond.
 
-`MDURATION(Settlement, Maturity, Rate, Yield, frequency [, basis])`
+`MDURATION(Settlement, Maturity, Rate, Yield, Frequency[, Basis])`
 
 | **Argument** | **Data type** | **Description** |
 | --- | --- | --- |
@@ -31,13 +31,15 @@ Financial functions are currently unavailable in Polaris. Learn more about the d
 
 The modified Macauley duration is calculated with the following formula:
 
-$MDuration = \frac
+$$
+MDuration = \frac
                   {
                     Duration
                   }
                   {
                     \left( 1 + \frac{y}{f} \right )
-                  }$
+                  }
+$$
 
 Where:
 
@@ -64,4 +66,4 @@ This example shows a modified Macauley duration calculation that does not specif
 | --- | --- | --- |
 | `MDURATION(DATE(2018, 1, 15), DATE(2021, 1, 15), 0.12, 0.1, 4)` | The example has a:  - settlement date of 01/15/2018 - maturity date of 01/15/2021 - rate of 0.12 (12%) - yield of 0.1 (10%) - frequency of 4 (quarterly) | 2.5131792 |
 
-<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.23.1/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fmduration-611e8dae-c597-4ce3-b0af-149391c39c50&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>
+<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.25.2/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;device=desktop&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fmduration-611e8dae-c597-4ce3-b0af-149391c39c50&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>

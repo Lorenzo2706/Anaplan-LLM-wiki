@@ -10,6 +10,14 @@ updated: 2026-08-31
 
 One page per ingested source, chronological (newest first). Each source page summarizes the raw document and points back at `raw/`.
 
+## 2026-08
+
+- [[wiki/sources/2026-08-31-anapedia-variance-aggregation|Anapedia — VARP / VARS Aggregation Functions]] — first-time ingest, two new rows in [[wiki/functions/index|functions index]] and [[wiki/functions/categories/aggregation|aggregation category]]
+- [[wiki/sources/2026-08-31-anapedia-call-center-refresh|Anapedia — Call Center Functions Refresh (AGENTS, AGENTSB, ERLANGB, ERLANGC)]] — Anaplan revised these help pages since the 2026-05-02 bulk ingest; raw docs refreshed in place, no syntax/semantic changes
+- [[wiki/sources/2026-08-31-anapedia-financial-refresh|Anapedia — Financial Functions Refresh (CUMIPMT, MDURATION)]] — raw docs refreshed in place, no syntax/semantic changes
+- [[wiki/sources/2026-08-31-anapedia-decumulate-refresh|Anapedia — DECUMULATE Refresh]] — raw doc refreshed in place, wording only
+- [[wiki/sources/2026-08-31-anapedia-hierarchylevel-refresh|Anapedia — HIERARCHYLEVEL Refresh]] — raw doc refreshed in place, wording + expanded example only
+
 ## 2026-06
 
 - [[wiki/sources/2026-06-15-circular-reference|Circular Reference — Community Threads (3 discussions)]] — root causes + Fake Time list, SYS LOOKUP, time-axis-substitution workarounds; new pattern page

@@ -3,7 +3,7 @@ title: "AGENTSB | Anapedia"
 source: "https://help.anaplan.com/agentsb-231ff255-172a-4586-a7de-0318c8bbea4d"
 author:
 published:
-created: 2026-05-02
+created: 2026-08-31
 description: "The AGENTSB function calculates the number of servers required to answer a specified percentage of calls (or SLA) within a busy period."
 tags:
   - "clippings"
@@ -43,4 +43,4 @@ The *Servers to meet SLA* line item uses the AGENTS function to calculate how ma
 | Average Duration | 18.67 | 23.25 | 24.87 | 17.39 |
 | Servers to meet SLA  `AGENTSB(Service Level Agreement, Request Arrival Rate, Average Duration)` | 16 | 23 | 39 | 22 |
 
-<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.23.1/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fagentsb-231ff255-172a-4586-a7de-0318c8bbea4d&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>
+<iframe title="Feedback Survey" src="https://nebula-cdn.kampyle.com/us/md-form/website/1.25.2/index.html?formId=32270&amp;type=live&amp;isMobile=false&amp;device=desktop&amp;referrer=https%3A%2F%2Fhelp.anaplan.com%2Fagentsb-231ff255-172a-4586-a7de-0318c8bbea4d&amp;region=digital-cloud-us-main&amp;displayType=embedded&amp;isSeparateFormTemplateFromData=true&amp;domainsListRelativePath=..%7C..%7C..%7C..%7Cus%2Fwu%2F568549%2Fonsite"></iframe>
